@@ -5,6 +5,7 @@ import {
   DocsPage,
   DocsTitle,
   MarkdownCopyButton,
+  PageLastUpdate,
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/docs/page";
 import { notFound } from "next/navigation";
@@ -12,6 +13,8 @@ import { getMDXComponents } from "@/components/mdx";
 import type { Metadata } from "next";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { gitConfig } from "@/lib/shared";
+import { Feedback } from "@/components/feedback/client";
+import { onPageFeedbackAction } from "@/lib/github";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
@@ -19,10 +22,17 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   if (!page) notFound();
 
   const MDX = page.data.body;
+  const lastModifiedTime = page.data.lastModified;
   const markdownUrl = getPageMarkdownUrl(page).url;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
+    <DocsPage
+      toc={page.data.toc}
+      full={page.data.full}
+      tableOfContent={{ style: "clerk" }}
+      tableOfContentPopover={{ style: "clerk" }}
+      breadcrumb={{ enabled: false }}
+    >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription className="mb-0">
         {page.data.description}
@@ -42,6 +52,8 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
           })}
         />
       </DocsBody>
+      <Feedback onSendAction={onPageFeedbackAction} />
+      {lastModifiedTime && <PageLastUpdate date={lastModifiedTime} />}
     </DocsPage>
   );
 }
@@ -57,10 +69,21 @@ export async function generateMetadata(
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  const title = page.data.title;
+  const description = page.data.description;
+
   return {
-    title: page.data.title,
-    description: page.data.description,
+    title,
+    description,
     openGraph: {
+      title,
+      description,
+      images: getPageImage(page).url,
+    },
+    twitter: {
+      title,
+      description,
+      card: "summary_large_image",
       images: getPageImage(page).url,
     },
   };

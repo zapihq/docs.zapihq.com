@@ -4,7 +4,10 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
-  reactStrictMode: true,
+  experimental: {
+    optimizePackageImports:['lucide-react']
+  },
+  devIndicators: false
 };
 
 export default withMDX(config);
