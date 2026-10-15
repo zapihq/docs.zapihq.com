@@ -1,0 +1,103 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.17.0"
+  APP_NAME: zapi-docs
+  SSH_OPTIONS: "-i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts"
+
+jobs:
+  deploy:
+    name: Build And Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      PORT: ${{ vars.PORT }}
+      OPENROUTER_API_KEY: ${{ vars.OPENROUTER_API_KEY }}
+      GITHUB_APP_ID: ${{ vars.GITHUB_APP_ID }}
+      GITHUB_APP_PRIVATE_KEY: ${{ vars.GITHUB_APP_PRIVATE_KEY }}
+      RUNTIME_ENV_FILE: ${{ secrets.RUNTIME_ENV_FILE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Package standalone release
+        run: bash ./scripts/deploy/package-release.sh
+
+      - name: Prepare SSH credentials
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: bash ./scripts/deploy/prepare-ssh.sh
+
+      - name: Validate deploy configuration
+        env:
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+        run: bash ./scripts/deploy/validate-config.sh
+
+      - name: Upload release archive
+        env:
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+        run: bash ./scripts/deploy/upload-release.sh
+
+      - name: Write runtime environment file
+        if: ${{ env.RUNTIME_ENV_FILE != '' || env.PORT != '' }}
+        env:
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          PORT: ${{ vars.PORT }}
+        run: bash ./scripts/deploy/write-runtime-env.sh
+
+      - name: Activate release atomically
+        env:
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          KEEP_RELEASES: ${{ vars.KEEP_RELEASES || '5' }}
+        run: bash ./scripts/deploy/activate-release.sh
