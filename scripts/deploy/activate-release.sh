@@ -22,8 +22,8 @@ if [ -f "${SHARED_DIR}/.env.production" ]; then
 fi
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
-sudo -n systemctl restart "${SERVICE_NAME}"
-sudo -n systemctl is-active --quiet "${SERVICE_NAME}"
+systemctl restart "${SERVICE_NAME}"
+systemctl is-active --quiet "${SERVICE_NAME}"
 
 cd "${RELEASES_DIR}"
 ls -1dt */ | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf --
