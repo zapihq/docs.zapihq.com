@@ -3,7 +3,8 @@ set -Eeuo pipefail
 
 RELEASE_ID="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
-ssh ${SSH_OPTIONS} -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
+# Added -n to prevent stdin reading conflicts during remote sudo execution
+ssh -n ${SSH_OPTIONS} -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
   "APP_NAME='${APP_NAME}' GITHUB_SHA='${GITHUB_SHA}' RELEASE_ID='${RELEASE_ID}' DEPLOY_PATH='${DEPLOY_PATH}' SERVICE_NAME='${SERVICE_NAME}' KEEP_RELEASES='${KEEP_RELEASES}' bash -s" <<'EOF'
 set -Eeuo pipefail
 
@@ -22,8 +23,8 @@ if [ -f "${SHARED_DIR}/.env.production" ]; then
 fi
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
-systemctl restart "${SERVICE_NAME}"
-systemctl is-active --quiet "${SERVICE_NAME}"
+sudo -n systemctl restart "${SERVICE_NAME}"
+sudo -n systemctl is-active --quiet "${SERVICE_NAME}"
 
 cd "${RELEASES_DIR}"
 ls -1dt */ | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf --
