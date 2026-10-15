@@ -28,6 +28,7 @@ jobs:
     env:
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       PORT: ${{ vars.PORT }}
+      OPENROUTER_API_KEY: ${{ vars.OPENROUTER_API_KEY }}
       RUNTIME_ENV_FILE: ${{ secrets.RUNTIME_ENV_FILE }}
 
     steps:
