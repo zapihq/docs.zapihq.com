@@ -4,10 +4,11 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
+  output: "standalone",
+  devIndicators: false,
   experimental: {
     optimizePackageImports:['lucide-react']
   },
-  devIndicators: false
 };
 
 export default withMDX(config);

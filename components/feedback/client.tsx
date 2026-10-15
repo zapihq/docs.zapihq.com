@@ -269,7 +269,7 @@ export function FeedbackBlock({
         <div className="in-[.prose-no-margin]:prose-no-margin">{children}</div>
       </div>
 
-      <PopoverContent className="min-w-[300px] bg-fd-card text-fd-card-foreground">
+      <PopoverContent className="min-w-75 bg-fd-card text-fd-card-foreground">
         {previous ? (
           <div className="flex flex-col items-center py-2 gap-2 text-fd-muted-foreground text-sm text-center rounded-xl">
             <p>Thank you for your feedback!</p>

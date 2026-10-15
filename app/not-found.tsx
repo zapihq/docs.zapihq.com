@@ -42,7 +42,7 @@ export default function NotFound() {
       <div className="mt-16 text-sm text-fd-muted-foreground">
         Need assistance?{" "}
         <a
-          href="mailto:support@vitetechsolutions.com"
+          href="mailto:support@zapihq.com"
           className="font-semibold text-fd-primary hover:underline"
         >
           Contact Support
