@@ -17,8 +17,8 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = createMetadata({
   title: {
-    template: "Zapi Documentation - %s",
-    default: "Zapi Documentation",
+    template: "Zapi Docs | %s",
+    default: "Zapi Docs",
   },
   description:
     "The official documentation for Zapi, a financial infrastructure platform.",
