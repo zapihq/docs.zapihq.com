@@ -18,7 +18,7 @@ env:
 
 jobs:
   lint:
-    name: Lint And Typecheck
+    name: Lint, Typecheck And Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -46,3 +46,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm types:check
+
+      - name: Build
+        run: pnpm build
