@@ -12,6 +12,12 @@ Issues are tracked in this repo's GitHub Issues via the `gh` CLI. See `docs/agen
 
 Five canonical triage roles, with label strings equal to their names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
+### Writing the docs
+
+Every content page follows `WRITING.md` — voice, money, names, terminology —
+read it before writing or editing anything in `content/docs/`. Term
+definitions live in `GLOSSARY.md`.
+
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
