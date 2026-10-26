@@ -20,8 +20,15 @@ env:
   SSH_OPTIONS: "-i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts"
 
 jobs:
+  ci:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   deploy:
     name: Build And Deploy
+    needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
