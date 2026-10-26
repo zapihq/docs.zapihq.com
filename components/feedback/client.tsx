@@ -39,7 +39,7 @@ const rateButtonVariants = cva(
         false: "text-fd-muted-foreground",
       },
     },
-  },
+  }
 );
 
 const pageFeedbackResult = z.extend(pageFeedback, {
@@ -106,7 +106,7 @@ export function Feedback({
           className={cn(
             rateButtonVariants({
               active: activeOpinion === "good",
-            }),
+            })
           )}
           onClick={() => {
             setOpinion("good");
@@ -120,7 +120,7 @@ export function Feedback({
           className={cn(
             rateButtonVariants({
               active: activeOpinion === "bad",
-            }),
+            })
           )}
           onClick={() => {
             setOpinion("bad");
@@ -143,7 +143,7 @@ export function Feedback({
                   buttonVariants({
                     color: "primary",
                   }),
-                  "text-xs",
+                  "text-xs"
                 )}
               >
                 View on GitHub
@@ -154,7 +154,7 @@ export function Feedback({
                   buttonVariants({
                     color: "secondary",
                   }),
-                  "text-xs",
+                  "text-xs"
                 )}
                 onClick={() => {
                   setOpinion(previous.opinion);
@@ -246,7 +246,7 @@ export function FeedbackBlock({
             "absolute -inset-1 rounded-sm pointer-events-none transition-colors duration-100 z-[-1]",
             open
               ? "bg-fd-accent"
-              : "group-hover/feedback:bg-fd-accent group-hover/feedback:delay-100",
+              : "group-hover/feedback:bg-fd-accent group-hover/feedback:delay-100"
           )}
         />
         <PopoverTrigger
@@ -254,7 +254,7 @@ export function FeedbackBlock({
             buttonVariants({ variant: "secondary", size: "sm" }),
             "absolute -top-7 inset-e-0 backdrop-blur-sm text-fd-muted-foreground gap-1.5 transition-all duration-100 data-[state=open]:bg-fd-accent data-[state=open]:text-fd-accent-foreground",
             !open &&
-              "opacity-0 pointer-events-none group-hover/feedback:pointer-events-auto group-hover/feedback:opacity-100 group-hover/feedback:delay-100 hover:pointer-events-auto hover:opacity-100 hover:delay-100",
+              "opacity-0 pointer-events-none group-hover/feedback:pointer-events-auto group-hover/feedback:opacity-100 group-hover/feedback:delay-100 hover:pointer-events-auto hover:opacity-100 hover:delay-100"
           )}
           onClick={(e) => {
             setOpen((prev) => !prev);
@@ -282,7 +282,7 @@ export function FeedbackBlock({
                   buttonVariants({
                     color: "primary",
                   }),
-                  "text-xs",
+                  "text-xs"
                 )}
               >
                 View on GitHub
@@ -293,7 +293,7 @@ export function FeedbackBlock({
                   buttonVariants({
                     color: "secondary",
                   }),
-                  "text-xs",
+                  "text-xs"
                 )}
                 onClick={() => {
                   setPrevious(null);
@@ -321,7 +321,7 @@ export function FeedbackBlock({
               type="submit"
               className={cn(
                 buttonVariants({ variant: "secondary", size: "sm" }),
-                "gap-1.5",
+                "gap-1.5"
               )}
               disabled={isPending}
             >
@@ -337,7 +337,7 @@ export function FeedbackBlock({
 
 function useSubmissionStorage<Result>(
   blockId: string,
-  validate: (v: unknown) => Result | null,
+  validate: (v: unknown) => Result | null
 ) {
   const storageKey = `docs-feedback-${blockId}`;
   const [value, setValue] = useState<Result | null>(null);
@@ -349,6 +349,8 @@ function useSubmissionStorage<Result>(
       if (item === null) return;
       const validated = validateCallback(JSON.parse(item));
 
+      // One-time hydration from localStorage; safe to set synchronously on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (validated !== null) setValue(validated);
     } catch {}
   }, [storageKey]);
