@@ -1,0 +1,11 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "quickstart",
+    "api-reference",
+    "payment-methods",
+    "webhooks",
+    "test-mode"
+  ]
+}

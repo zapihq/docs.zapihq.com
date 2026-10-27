@@ -1,0 +1,29 @@
+---
+title: Payment methods
+description: telebirr, bank accounts, and cards behind one request.
+---
+
+A payment method is the instrument a payer uses. A provider is the channel that
+executes it. You name both in the create-payment request.
+
+| Payer uses                          | `provider` value |
+| ----------------------------------- | ---------------- |
+| telebirr wallet                     | `telebirr`       |
+| Commercial Bank of Ethiopia account | `cbe`            |
+| Awash Bank account                  | `awash`          |
+| Card                                | `card`           |
+
+The provider values above are illustrative until the API spec is published.
+`telebirr` is always one lowercase word, in prose and in payloads.
+
+## Choosing a provider
+
+Show the providers your payers actually use. A checkout with four options asks
+the payer to choose; a checkout with one option asks them to confirm. Both are
+valid, but they are different screens.
+
+## What the payer sees
+
+Zapi returns a `checkout_url` for the payment. The payer approves the amount in
+the provider's own flow: a telebirr prompt, a bank app, or a card form. Your
+application never handles the payer's credentials.

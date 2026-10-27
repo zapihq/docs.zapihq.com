@@ -31,7 +31,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       className={`${fontSans.variable} ${fontMono.variable} font-sans antialiased`}
       suppressHydrationWarning
     >
-      <body className="flex flex-col min-h-screen">
+      <body className="flex min-h-screen flex-col bg-fd-background text-fd-foreground selection:bg-brand-quiet selection:text-ink">
         <RootProvider>{children}</RootProvider>
       </body>
     </html>

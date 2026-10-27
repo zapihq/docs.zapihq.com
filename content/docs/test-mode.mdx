@@ -1,0 +1,16 @@
+---
+title: Test mode
+description: Simulate payments without moving money.
+---
+
+test mode runs the same requests as live mode with simulated funds. No money
+moves, and no payer is contacted.
+
+Use a key that starts with `sk_test_`. Every response keeps the same shape as
+live mode, so code that works in test mode works live once you swap the key.
+
+## Trying a failure
+
+Failure handling is part of the integration: a payer can decline, a provider can
+time out, and a webhook can arrive twice. The exact test triggers are planned and
+will be listed here when the API spec is published.
