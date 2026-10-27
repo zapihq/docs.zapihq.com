@@ -13,6 +13,12 @@ _Avoid_: client, vendor, business account
 The person or organization that pays a merchant through Zapi.
 _Avoid_: customer, user, buyer
 
+**Recipient**:
+A party a merchant sends money to through a payout — a seller, creator,
+vendor, or the merchant itself — onboarded once and referenced by each
+payout.
+_Avoid_: payee, beneficiary
+
 ## Moving money
 
 **Payment**:
@@ -34,13 +40,9 @@ Money returned to a payer, in full or in part, after a payment succeeds.
 _Avoid_: reversal, credit
 
 **Payout**:
-Money sent from a merchant's balance to the merchant's own bank or wallet.
-_Avoid_: withdrawal, disbursement, transfer
-
-**Transfer**:
-Money moved between accounts inside the Zapi system, as distinct from a
-payout's exit to the merchant's own bank.
-_Avoid_: using it for the money-out product (that is Payout)
+Money a merchant sends out of its Zapi balance to a recipient, tracked
+through its own lifecycle.
+_Avoid_: withdrawal, disbursement, cash-out
 
 **Settlement**:
 The process that makes captured funds available as a merchant balance.

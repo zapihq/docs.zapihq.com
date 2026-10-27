@@ -50,6 +50,8 @@ here and in samples — never copy the old lore into individual pages.
   | Object            | Prefix  | Example         |
   | ----------------- | ------- | --------------- |
   | Payment           | `pay_`  | `pay_9f2c1a`    |
+  | Payout            | `po_`   | `po_9f2c1a`     |
+  | Recipient         | `rcp_`  | `rcp_4k1q7c`    |
   | Refund            | `refnd_`| `refnd_4k1q7c`  |
   | Virtual account   | `acct_` | `acct_1Lj2kf`   |
   | Idempotency key   | `req_`  | `req_9x8h2m`    |
@@ -78,11 +80,15 @@ Definitions live in `GLOSSARY.md`. Usage rules here.
   names that emerge).
 - **Payer** = the person or organization paying through a Zapi-powered flow.
   Never "user" or "buyer".
-- **Payout** = the money-out product, in prose. "Transfer" is reserved for a
-  distinct API object if the API-truth decision introduces one — even if the
-  eventual SDK method turns out to be `transfers.create`, the **prose word
-  stays Payout** (Stripe does the same). Until that resolution, never use
-  both interchangeably for money-out.
+- **Payout** = the money-out product, in prose and in the API: money a
+  merchant sends out of its Zapi balance to a recipient it has onboarded. It
+  is `payouts` everywhere the API speaks — resource, tag, SDK namespace
+  (`zapi.payouts.create`), event namespace (`payout.*`), and identifier
+  prefix (`po_`). **Transfer is retired**: no `transfers` path, tag, SDK
+  namespace, or event, and no aliases. Lowercase "bank transfer" survives
+  only as plain English for the bank rail, never as a Zapi object.
+- **Recipient** = a party a merchant pays out to, onboarded once and
+  referenced by a payout's `destination`. Never "payee" or "beneficiary".
 - **test mode** is canonical in prose. "Sandbox" appears only when quoting a
   marketing CTA or a dashboard label.
 - **telebirr**: one lowercase word, in prose and payloads. `tele_birr` is
