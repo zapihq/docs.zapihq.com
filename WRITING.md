@@ -3,13 +3,13 @@
 The contract for every page on docs.zapihq.com, so pages written in a dozen
 sessions read as one hand. Read it before writing or editing anything in
 `content/docs/`. Term definitions live in `GLOSSARY.md`; this file decides how
-to *say* things. Edit this file only as an explicit, recorded decision — not
+to _say_ things. Edit this file only as an explicit, recorded decision — not
 mid-task.
 
-Some rows below are **docs-proposed defaults**: the public API has no
-authoritative spec yet, so docs state a default and the eventual backend spec
-(API-truth decision) may overturn it. When that happens, change the default
-here and in samples — never copy the old lore into individual pages.
+The authoritative contract is `content/openapi/payments.yaml` and
+`content/openapi/payouts.yaml`. These rules must match it: change the spec
+first, then this file and the samples — never copy old lore into individual
+pages.
 
 ## Voice
 
@@ -36,40 +36,41 @@ here and in samples — never copy the old lore into individual pages.
   culturally, never as a unit).
 - In code, amounts are **integer minor units (santim)**: `amount: 100000` is
   1,000.00 ETB. First time a page shows a sample with an amount, gloss the
-  unit in the prose next to it. *(Docs-proposed default; backend may
-  override.)*
-- Payload casing is likewise a docs-proposed default: currency codes
-  **uppercase** (`ETB`), provider values without underscores (`telebirr`).
-  This kills the current marketing mix of `'etb'`/`ETB` and
-  `tele_birr`/`telebirr`.
+  unit in the prose next to it.
+- Payload casing follows the spec: currency codes are **uppercase** (`ETB`)
+  and provider values have no underscores (`telebirr`). Never write `etb` or
+  `tele_birr` in a sample.
 
 ## Names
 
 - Object identifiers carry **typed prefixes**, always:
 
-  | Object            | Prefix  | Example         |
-  | ----------------- | ------- | --------------- |
-  | Payment           | `pay_`  | `pay_9f2c1a`    |
-  | Payout            | `po_`   | `po_9f2c1a`     |
-  | Recipient         | `rcp_`  | `rcp_4k1q7c`    |
-  | Refund            | `refnd_`| `refnd_4k1q7c`  |
-  | Virtual account   | `acct_` | `acct_1Lj2kf`   |
-  | Idempotency key   | `req_`  | `req_9x8h2m`    |
-  | Webhook secret    | `whsec_`| `whsec_live_…`  |
+  | Object           | Prefix   | Example        |
+  | ---------------- | -------- | -------------- |
+  | Payment          | `pay_`   | `pay_9f2c1a`   |
+  | Payout           | `po_`    | `po_9f2c1a`    |
+  | Recipient        | `rcp_`   | `rcp_4k1q7c`   |
+  | Refund           | `refnd_` | `refnd_4k1q7c` |
+  | Virtual account  | `acct_`  | `acct_1Lj2kf`  |
+  | Event            | `evt_`   | `evt_3k8m1p`   |
+  | Webhook endpoint | `whe_`   | `whe_7d2m4p`   |
+  | Idempotency key  | `req_`   | `req_9x8h2m`   |
+  | Webhook secret   | `whsec_` | `whsec_live_…` |
 
   `txn_` is retired everywhere, including any marketing copy a docs page
   mirrors.
-- Webhook event names are **dotted lowercase `resource.state`**, anchored on
-  the already-public `payment.success`. The full event lexicon is an
-  API-truth decision; until it rules, don't invent events beyond what's on
-  record.
+
+- Webhook event names are **dotted lowercase `resource.state`**. The full set
+  is fixed: `payment.processing`, `payment.success`, `payment.failed`,
+  `payment.cancelled`, `refund.success`, `refund.failed`,
+  `payout.processing`, `payout.success`, `payout.failed`,
+  `payout.cancelled`. Don't invent events beyond these.
 - Multi-word URL path segments are **kebab-case** (`payment-links`). JSON
   fields are **snake_case**, shown as on the wire.
 - The API base URL appears in full once per page (`https://api.zapihq.com/v1`);
   after that, paths only (`POST /v1/payments`).
-- SDK snippets show `zapi.<resource>.<action>` exactly as the real `@zapi/node`
-  source/via the API-truth decision records; they never invent methods beyond
-  what's on record.
+- Code samples are **curl only**. `@zapi/node` is unpublished and is not
+  documented; don't add SDK snippets or method names.
 
 ## Terminology
 
@@ -82,11 +83,10 @@ Definitions live in `GLOSSARY.md`. Usage rules here.
   Never "user" or "buyer".
 - **Payout** = the money-out product, in prose and in the API: money a
   merchant sends out of its Zapi balance to a recipient it has onboarded. It
-  is `payouts` everywhere the API speaks — resource, tag, SDK namespace
-  (`zapi.payouts.create`), event namespace (`payout.*`), and identifier
-  prefix (`po_`). **Transfer is retired**: no `transfers` path, tag, SDK
-  namespace, or event, and no aliases. Lowercase "bank transfer" survives
-  only as plain English for the bank rail, never as a Zapi object.
+  is `payouts` everywhere the API speaks — resource, tag, event namespace
+  (`payout.*`), and identifier prefix (`po_`). **Transfer is retired**: no
+  `transfers` path, tag, or event, and no aliases. Lowercase "bank transfer"
+  survives only as plain English for the bank rail, never as a Zapi object.
 - **Recipient** = a party a merchant pays out to, onboarded once and
   referenced by a payout's `destination`. Never "payee" or "beneficiary".
 - **test mode** is canonical in prose. "Sandbox" appears only when quoting a
@@ -107,6 +107,9 @@ Definitions live in `GLOSSARY.md`. Usage rules here.
   that gloss does the explaining. Inline comments appear only when a line is
   genuinely non-obvious. No comment walls, no commented TODOs in published
   samples.
+- Error bodies use the envelope defined in the spec:
+  `{ "error": { "type", "code", "message", "param" } }`. Branch on `code`,
+  and quote the HTTP status and the code together.
 
 ## Banned words
 

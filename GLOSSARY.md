@@ -28,11 +28,13 @@ _Avoid_: transaction, charge, order
 
 **Payment method**:
 The instrument a payer pays with — a telebirr wallet, a bank account, or a
-card.
+card — named in the API by `payment_method`: `telebirr`, `cbe`, `awash`,
+`boa`, `dashen`, or `card`.
 _Avoid_: channel, rail, option
 
 **Provider**:
-The channel that executes a payment method, such as telebirr or a bank.
+The institution that operates a payment method, such as telebirr or a bank.
+EthSwitch is an interbank switch, not a payment method.
 _Avoid_: operator, gateway, PSP
 
 **Refund**:

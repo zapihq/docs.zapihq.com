@@ -1,0 +1,815 @@
+openapi: 3.1.0
+info:
+  title: Zapi Payouts API
+  version: 1.0.0
+  description: |
+    Send money from a merchant's Zapi balance to a recipient.
+
+    Amounts are integer santim: `500000` is 5,000.00 ETB. Currency codes are
+    uppercase ISO 4217, so the only value today is `ETB`.
+
+    A payout's `destination` is a saved recipient (`rcp_…`) onboarded in the
+    dashboard. Authenticate every request with a secret key as a bearer token:
+    `sk_live_…` for live data, `sk_test_…` for test data. Send an
+    `Idempotency-Key` header with every `POST`; keys are retained for 24 hours
+    and a replay returns the original response.
+  contact:
+    name: Zapi
+    url: https://zapihq.com
+  license:
+    name: Proprietary
+    url: https://zapihq.com/terms
+servers:
+  - url: https://api.zapihq.com
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Payouts
+    description: Send money to a recipient.
+  - name: Recipients
+    description: The saved destinations a payout can pay.
+paths:
+  /v1/payouts:
+    post:
+      tags:
+        - Payouts
+      summary: Create a payout
+      description: |
+        Send money from your Zapi balance to a recipient. The payout starts in
+        `pending`, moves to `processing` when it reaches the provider, and ends
+        `succeeded` or `failed`. You can cancel a payout only while it is
+        `pending`.
+      operationId: createPayout
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayoutCreateRequest"
+            examples:
+              bankAccount:
+                summary: Pay a recipient's bank account
+                value:
+                  amount: 500000
+                  currency: ETB
+                  destination: rcp_4k1q7c
+                  description: Seller settlement, October
+              wallet:
+                summary: Pay a recipient's telebirr wallet
+                value:
+                  amount: 25000
+                  currency: ETB
+                  destination: rcp_8m2n5v
+      responses:
+        "200":
+          $ref: "#/components/responses/PayoutWriteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    get:
+      tags:
+        - Payouts
+      summary: List payouts
+      description: |
+        List payouts newest first. Pass `starting_after` with the `id` of the
+        last payout on the previous page to fetch the next page.
+      operationId: listPayouts
+      parameters:
+        - $ref: "#/components/parameters/PayoutStatusFilter"
+        - $ref: "#/components/parameters/DestinationFilter"
+        - $ref: "#/components/parameters/CreatedAfter"
+        - $ref: "#/components/parameters/CreatedBefore"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        "200":
+          $ref: "#/components/responses/PayoutListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payouts/{payout_id}:
+    get:
+      tags:
+        - Payouts
+      summary: Retrieve a payout
+      description: Retrieve one payout by its `po_…` identifier.
+      operationId: retrievePayout
+      parameters:
+        - $ref: "#/components/parameters/PayoutId"
+      responses:
+        "200":
+          $ref: "#/components/responses/PayoutResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payouts/{payout_id}/cancel:
+    post:
+      tags:
+        - Payouts
+      summary: Cancel a payout
+      description: |
+        Cancel a payout that is still `pending`. Cancelling an already cancelled
+        payout returns the payout unchanged. A payout that has reached
+        `processing`, `succeeded`, or `failed` cannot be cancelled and returns
+        `409`.
+      operationId: cancelPayout
+      parameters:
+        - $ref: "#/components/parameters/PayoutId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/PayoutWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Secret API key. `sk_live_…` reads and writes live data; `sk_test_…`
+        reads and writes test data. Create and rotate keys in the dashboard.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        A unique key for this request, 1–255 characters. Use `req_…` by
+        convention. Keys are retained for 24 hours; replaying a request with
+        the same key and the same body returns the original response.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: req_5t7y1u
+    PayoutId:
+      name: payout_id
+      in: path
+      required: true
+      description: The `po_…` identifier of the payout.
+      schema:
+        type: string
+        pattern: "^po_"
+      example: po_9f2c1a
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: The number of objects to return, from 1 to 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    StartingAfter:
+      name: starting_after
+      in: query
+      required: false
+      description: |
+        A cursor: the `id` of the last object on the previous page. Omit it to
+        start from the newest object.
+      schema:
+        type: string
+    CreatedAfter:
+      name: created_after
+      in: query
+      required: false
+      description: Return objects created at or after this time.
+      schema:
+        type: string
+        format: date-time
+    CreatedBefore:
+      name: created_before
+      in: query
+      required: false
+      description: Return objects created before this time.
+      schema:
+        type: string
+        format: date-time
+    PayoutStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return payouts in this state.
+      schema:
+        $ref: "#/components/schemas/PayoutStatus"
+    DestinationFilter:
+      name: destination
+      in: query
+      required: false
+      description: Return payouts to this `rcp_…` recipient.
+      schema:
+        type: string
+        pattern: "^rcp_"
+  headers:
+    ZapiRequestId:
+      description: A unique identifier for this request. Include it when you contact support.
+      schema:
+        type: string
+      example: req_2p6w9s
+    IdempotentReplay:
+      description: |
+        Present and `true` only when this response replayed a request made with
+        the same `Idempotency-Key`.
+      schema:
+        type: boolean
+      example: true
+    RetryAfter:
+      description: How long to wait before retrying, in seconds.
+      schema:
+        type: integer
+      example: 2
+  schemas:
+    Currency:
+      type: string
+      description: The ISO 4217 currency code. Zapi supports Ethiopian birr only.
+      enum:
+        - ETB
+    PayoutStatus:
+      type: string
+      description: |
+        `pending` means the payout is queued and can still be cancelled.
+        `processing` means the provider is moving the money. `succeeded`,
+        `failed`, and `cancelled` are final.
+      enum:
+        - pending
+        - processing
+        - succeeded
+        - failed
+        - cancelled
+    PayoutFailureCode:
+      type: string
+      description: Why a payout failed. `null` unless `status` is `failed`.
+      enum:
+        - insufficient_balance
+        - invalid_destination
+        - provider_declined
+        - provider_unavailable
+    RecipientType:
+      type: string
+      description: Where the recipient receives money.
+      enum:
+        - bank_account
+        - wallet
+    RecipientProvider:
+      type: string
+      description: |
+        The bank or wallet that holds the recipient's account.
+      enum:
+        - cbe
+        - awash
+        - boa
+        - dashen
+        - telebirr
+    RecipientStatus:
+      type: string
+      description: |
+        `active` recipients can receive payouts. `inactive` recipients cannot
+        until they are reactivated in the dashboard.
+      enum:
+        - active
+        - inactive
+    Metadata:
+      type: object
+      description: |
+        Up to 50 key-value pairs for your own use. Keys are at most 40
+        characters and values at most 500. Zapi stores metadata but does not
+        act on it.
+      maxProperties: 50
+      propertyNames:
+        maxLength: 40
+      additionalProperties:
+        type: string
+        maxLength: 500
+    PayoutCreateRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - destination
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The amount in santim. `500000` is 5,000.00 ETB.
+          example: 500000
+        currency:
+          $ref: "#/components/schemas/Currency"
+        destination:
+          type: string
+          pattern: "^rcp_"
+          description: The `rcp_…` identifier of the recipient to pay.
+          example: rcp_4k1q7c
+        description:
+          type: string
+          maxLength: 500
+          description: What the payout is for.
+          example: Seller settlement, October
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Payout:
+      type: object
+      required:
+        - id
+        - object
+        - amount
+        - currency
+        - status
+        - destination
+        - description
+        - metadata
+        - failure_code
+        - created
+        - livemode
+      properties:
+        id:
+          type: string
+          pattern: "^po_"
+          description: The payout identifier.
+          example: po_9f2c1a
+        object:
+          type: string
+          const: payout
+          description: The object type.
+        amount:
+          type: integer
+          format: int64
+          description: The amount in santim.
+          example: 500000
+        currency:
+          $ref: "#/components/schemas/Currency"
+        status:
+          $ref: "#/components/schemas/PayoutStatus"
+        destination:
+          type: string
+          pattern: "^rcp_"
+          description: The recipient being paid.
+          example: rcp_4k1q7c
+        description:
+          type:
+            - string
+            - "null"
+          description: What the payout is for, or `null`.
+          example: Seller settlement, October
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        failure_code:
+          anyOf:
+            - $ref: "#/components/schemas/PayoutFailureCode"
+            - type: "null"
+          description: Why the payout failed, or `null`.
+        created:
+          type: string
+          format: date-time
+          description: When the payout was created.
+          example: "2026-10-27T13:00:00Z"
+        livemode:
+          type: boolean
+          description: |
+            `true` for live data, `false` for test data. Determined by the key
+            used to create the payout.
+          example: true
+    PayoutList:
+      type: object
+      required:
+        - data
+        - has_more
+      properties:
+        data:
+          type: array
+          description: The payouts on this page, newest first.
+          items:
+            $ref: "#/components/schemas/Payout"
+        has_more:
+          type: boolean
+          description: Whether another page exists.
+          example: false
+    Recipient:
+      type: object
+      description: |
+        A saved destination for payouts, onboarded in the dashboard. The API
+        references recipients by their `rcp_…` identifier and does not create
+        or modify them.
+      required:
+        - id
+        - object
+        - name
+        - type
+        - provider
+        - account_number_last4
+        - status
+        - created
+        - livemode
+      properties:
+        id:
+          type: string
+          pattern: "^rcp_"
+          description: The recipient identifier.
+          example: rcp_4k1q7c
+        object:
+          type: string
+          const: recipient
+          description: The object type.
+        name:
+          type: string
+          description: The recipient's name.
+          example: Abebe Trading
+        type:
+          $ref: "#/components/schemas/RecipientType"
+        provider:
+          $ref: "#/components/schemas/RecipientProvider"
+        account_number_last4:
+          type: string
+          description: The last four digits of the recipient's account number.
+          example: "4821"
+        status:
+          $ref: "#/components/schemas/RecipientStatus"
+        created:
+          type: string
+          format: date-time
+          description: When the recipient was onboarded.
+          example: "2026-10-20T09:00:00Z"
+        livemode:
+          type: boolean
+          description: Whether this is a live or test recipient.
+          example: true
+    EventType:
+      type: string
+      description: The payout event name, in `resource.state` form.
+      enum:
+        - payout.processing
+        - payout.success
+        - payout.failed
+        - payout.cancelled
+    EventData:
+      type: object
+      required:
+        - object
+      properties:
+        object:
+          description: The payout that changed.
+          $ref: "#/components/schemas/Payout"
+    Event:
+      type: object
+      required:
+        - id
+        - object
+        - type
+        - created
+        - livemode
+        - data
+      properties:
+        id:
+          type: string
+          pattern: "^evt_"
+          description: The event identifier. Use it to deduplicate deliveries.
+          example: evt_3k8m1p
+        object:
+          type: string
+          const: event
+          description: The object type.
+        type:
+          $ref: "#/components/schemas/EventType"
+        created:
+          type: string
+          format: date-time
+          description: When the event happened.
+          example: "2026-10-27T13:05:00Z"
+        livemode:
+          type: boolean
+          description: Whether this is a live or test event.
+          example: true
+        data:
+          $ref: "#/components/schemas/EventData"
+    ErrorType:
+      type: string
+      description: The error family. It determines the HTTP status class.
+      enum:
+        - invalid_request_error
+        - authentication_error
+        - permission_error
+        - conflict_error
+        - idempotency_error
+        - rate_limit_error
+        - api_error
+    ErrorCode:
+      type: string
+      description: |
+        A stable, machine-readable code. Branch on this value; the `message` is
+        for humans and may change.
+      enum:
+        - parameter_missing
+        - parameter_invalid
+        - parameter_unknown
+        - amount_invalid
+        - currency_unsupported
+        - metadata_invalid
+        - pagination_invalid
+        - resource_missing
+        - api_key_missing
+        - api_key_invalid
+        - api_key_revoked
+        - livemode_mismatch
+        - key_not_authorized
+        - payout_not_cancellable
+        - recipient_inactive
+        - idempotency_key_reuse
+        - idempotency_key_in_progress
+        - rate_limit_exceeded
+        - internal_error
+        - provider_unavailable
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - type
+            - code
+            - message
+          properties:
+            type:
+              $ref: "#/components/schemas/ErrorType"
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            message:
+              type: string
+              description: A human-readable explanation.
+              example: The payout has already reached the provider and cannot be cancelled.
+            param:
+              type:
+                - string
+                - "null"
+              description: |
+                The request parameter at fault, as a dot path such as
+                `destination`, or `null`.
+              example: null
+  responses:
+    PayoutResponse:
+      description: The payout.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Payout"
+          examples:
+            processing:
+              summary: A payout at the provider
+              value:
+                id: po_9f2c1a
+                object: payout
+                amount: 500000
+                currency: ETB
+                status: processing
+                destination: rcp_4k1q7c
+                description: Seller settlement, October
+                metadata: {}
+                failure_code: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+    PayoutWriteResponse:
+      description: The payout, after the request was applied or replayed.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Idempotent-Replay:
+          $ref: "#/components/headers/IdempotentReplay"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Payout"
+          examples:
+            pending:
+              summary: A new payout waiting for the provider
+              value:
+                id: po_9f2c1a
+                object: payout
+                amount: 500000
+                currency: ETB
+                status: pending
+                destination: rcp_4k1q7c
+                description: Seller settlement, October
+                metadata: {}
+                failure_code: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+    PayoutListResponse:
+      description: A page of payouts.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PayoutList"
+          examples:
+            page:
+              summary: One payout and no further pages
+              value:
+                data:
+                  - id: po_9f2c1a
+                    object: payout
+                    amount: 500000
+                    currency: ETB
+                    status: succeeded
+                    destination: rcp_4k1q7c
+                    description: Seller settlement, October
+                    metadata: {}
+                    failure_code: null
+                    created: "2026-10-27T13:00:00Z"
+                    livemode: true
+                has_more: false
+    BadRequest:
+      description: The request is malformed or a parameter is invalid.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidAmount:
+              summary: A non-positive amount
+              value:
+                error:
+                  type: invalid_request_error
+                  code: amount_invalid
+                  message: The amount must be a positive integer in santim.
+                  param: amount
+    Unauthorized:
+      description: The API key is missing, invalid, or revoked.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missingKey:
+              summary: No bearer token
+              value:
+                error:
+                  type: authentication_error
+                  code: api_key_missing
+                  message: Provide a secret key as a bearer token.
+                  param: null
+    Forbidden:
+      description: The key cannot perform this request.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            modeMismatch:
+              summary: A test key touching live data
+              value:
+                error:
+                  type: permission_error
+                  code: livemode_mismatch
+                  message: A test key cannot access live objects.
+                  param: null
+    NotFound:
+      description: The object does not exist.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missing:
+              summary: An unknown payout
+              value:
+                error:
+                  type: invalid_request_error
+                  code: resource_missing
+                  message: No payout exists with that identifier.
+                  param: payout_id
+    Conflict:
+      description: The request conflicts with the object's current state.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notCancellable:
+              summary: Cancelling a payout already at the provider
+              value:
+                error:
+                  type: conflict_error
+                  code: payout_not_cancellable
+                  message: The payout has reached the provider and cannot be cancelled.
+                  param: null
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            limited:
+              summary: The key exceeded its request rate
+              value:
+                error:
+                  type: rate_limit_error
+                  code: rate_limit_exceeded
+                  message: Too many requests. Retry after the delay in the Retry-After header.
+                  param: null
+    ServerError:
+      description: Zapi could not complete the request.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            internal:
+              summary: An unexpected failure
+              value:
+                error:
+                  type: api_error
+                  code: internal_error
+                  message: Something went wrong on our side. Retry the request.
+                  param: null
+    ServiceUnavailable:
+      description: The provider is unavailable.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            unavailable:
+              summary: The destination provider is down
+              value:
+                error:
+                  type: api_error
+                  code: provider_unavailable
+                  message: The provider is temporarily unavailable. Retry the payout later.
+                  param: null
