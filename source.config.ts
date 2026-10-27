@@ -2,13 +2,18 @@ import { defineConfig, defineDocs } from "fumadocs-mdx/config";
 import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
 import lastModified from "fumadocs-mdx/plugins/last-modified";
 import { remarkFeedbackBlock } from "fumadocs-core/mdx-plugins/remark-feedback-block";
+import { z } from "zod";
 
 // You can customize Zod schemas for frontmatter and `meta.json` here
 // see https://fumadocs.dev/docs/mdx/collections
 export const docs = defineDocs({
   dir: "content/docs",
   docs: {
-    schema: pageSchema,
+    // `description` is required: it is the page lede, the search result, and
+    // the social card, so a page without one is a broken page. See WRITING.md.
+    schema: pageSchema.extend({
+      description: z.string().min(1),
+    }),
     postprocess: {
       includeProcessedMarkdown: true,
     },
