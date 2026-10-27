@@ -1,0 +1,1655 @@
+openapi: 3.1.0
+info:
+  title: Zapi Payments API
+  version: 1.0.0
+  description: |
+    Collect payments in Ethiopian birr, refund them, and receive events.
+
+    Amounts are integer santim: `100000` is 1,000.00 ETB. Currency codes are
+    uppercase ISO 4217, so the only value today is `ETB`.
+
+    Authenticate every request with a secret key as a bearer token:
+    `sk_live_…` for live data, `sk_test_…` for test data. Send an
+    `Idempotency-Key` header with every `POST`; keys are retained for 24 hours
+    and a replay returns the original response.
+  contact:
+    name: Zapi
+    url: https://zapihq.com
+  license:
+    name: Proprietary
+    url: https://zapihq.com/terms
+servers:
+  - url: https://api.zapihq.com
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Payments
+    description: Collect money from a payer.
+  - name: Refunds
+    description: Return money to a payer after a payment succeeds.
+  - name: Webhook endpoints
+    description: Register the URLs that receive events.
+paths:
+  /v1/payments:
+    post:
+      tags:
+        - Payments
+      summary: Create a payment
+      description: |
+        Create a payment and, by default, start it. Set `confirm` to `false` to
+        create the payment in `requires_confirmation` and start it later with
+        `POST /v1/payments/{payment_id}/confirm`.
+
+        The response includes `checkout_url` whenever the payer must approve
+        the payment on their phone or in their bank app. The request never
+        carries payer details: phone numbers, bank accounts, and card numbers
+        are collected on the hosted page.
+      operationId: createPayment
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentCreateRequest"
+            examples:
+              telebirr:
+                summary: A telebirr payment started immediately
+                value:
+                  amount: 100000
+                  currency: ETB
+                  payment_method: telebirr
+                  reference: order_1042
+                  description: Order 1042
+              bankNotStarted:
+                summary: A bank payment created but not started
+                value:
+                  amount: 250000
+                  currency: ETB
+                  payment_method: cbe
+                  confirm: false
+                  reference: order_1043
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentWriteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      tags:
+        - Payments
+      summary: List payments
+      description: |
+        List payments newest first. Pass `starting_after` with the `id` of the
+        last payment on the previous page to fetch the next page.
+      operationId: listPayments
+      parameters:
+        - $ref: "#/components/parameters/PaymentStatusFilter"
+        - $ref: "#/components/parameters/PaymentMethodFilter"
+        - $ref: "#/components/parameters/ReferenceFilter"
+        - $ref: "#/components/parameters/CreatedAfter"
+        - $ref: "#/components/parameters/CreatedBefore"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payments/{payment_id}:
+    get:
+      tags:
+        - Payments
+      summary: Retrieve a payment
+      description: Retrieve one payment by its `pay_…` identifier.
+      operationId: retrievePayment
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payments/{payment_id}/confirm:
+    post:
+      tags:
+        - Payments
+      summary: Confirm a payment
+      description: |
+        Start a payment created with `confirm: false`. Confirming a payment that
+        is already processing or succeeded returns the payment unchanged.
+        Confirming a failed or cancelled payment returns `409`.
+      operationId: confirmPayment
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payments/{payment_id}/cancel:
+    post:
+      tags:
+        - Payments
+      summary: Cancel a payment
+      description: |
+        Cancel a payment that has not succeeded. Cancelling an already cancelled
+        payment returns the payment unchanged. Cancelling a succeeded payment
+        returns `409`.
+      operationId: cancelPayment
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/payments/{payment_id}/refunds:
+    post:
+      tags:
+        - Refunds
+      summary: Refund a payment
+      description: |
+        Refund all or part of a succeeded payment. Omit `amount` to refund the
+        remaining balance. You can refund a payment more than once, but the sum
+        of refunds cannot exceed the captured amount.
+      operationId: createRefund
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundCreateRequest"
+            examples:
+              partial:
+                summary: Refund part of a payment
+                value:
+                  amount: 25000
+                  reason: requested_by_payer
+              full:
+                summary: Refund the remaining balance
+                value:
+                  reason: duplicate
+      responses:
+        "200":
+          $ref: "#/components/responses/RefundWriteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/refunds:
+    get:
+      tags:
+        - Refunds
+      summary: List refunds
+      description: |
+        List refunds newest first. Pass `starting_after` with the `id` of the
+        last refund on the previous page to fetch the next page.
+      operationId: listRefunds
+      parameters:
+        - $ref: "#/components/parameters/RefundStatusFilter"
+        - $ref: "#/components/parameters/RefundPaymentFilter"
+        - $ref: "#/components/parameters/CreatedAfter"
+        - $ref: "#/components/parameters/CreatedBefore"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        "200":
+          $ref: "#/components/responses/RefundListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/refunds/{refund_id}:
+    get:
+      tags:
+        - Refunds
+      summary: Retrieve a refund
+      description: Retrieve one refund by its `refnd_…` identifier.
+      operationId: retrieveRefund
+      parameters:
+        - $ref: "#/components/parameters/RefundId"
+      responses:
+        "200":
+          $ref: "#/components/responses/RefundResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/webhook-endpoints:
+    post:
+      tags:
+        - Webhook endpoints
+      summary: Create a webhook endpoint
+      description: |
+        Register an HTTPS URL to receive events. The response includes the
+        endpoint's signing secret once; store it and use it to verify the
+        `Zapi-Signature` header on every delivery.
+      operationId: createWebhookEndpoint
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointCreateRequest"
+            examples:
+              allEvents:
+                summary: Receive every event
+                value:
+                  url: https://example.com/webhooks/zapi
+                  enabled_events:
+                    - "*"
+                  description: Production endpoint
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookEndpointCreatedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      tags:
+        - Webhook endpoints
+      summary: List webhook endpoints
+      description: |
+        List webhook endpoints newest first. Pass `starting_after` with the `id`
+        of the last endpoint on the previous page to fetch the next page.
+      operationId: listWebhookEndpoints
+      parameters:
+        - $ref: "#/components/parameters/WebhookEndpointStatusFilter"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookEndpointListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/webhook-endpoints/{webhook_endpoint_id}:
+    get:
+      tags:
+        - Webhook endpoints
+      summary: Retrieve a webhook endpoint
+      description: Retrieve one webhook endpoint. The signing secret is not returned here.
+      operationId: retrieveWebhookEndpoint
+      parameters:
+        - $ref: "#/components/parameters/WebhookEndpointId"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookEndpointResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    patch:
+      tags:
+        - Webhook endpoints
+      summary: Update a webhook endpoint
+      description: Change the URL, the events it receives, or its enabled state.
+      operationId: updateWebhookEndpoint
+      parameters:
+        - $ref: "#/components/parameters/WebhookEndpointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointUpdateRequest"
+            examples:
+              disable:
+                summary: Disable an endpoint without deleting it
+                value:
+                  status: disabled
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookEndpointResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      tags:
+        - Webhook endpoints
+      summary: Delete a webhook endpoint
+      description: Delete an endpoint. It stops receiving events immediately.
+      operationId: deleteWebhookEndpoint
+      parameters:
+        - $ref: "#/components/parameters/WebhookEndpointId"
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/webhook-endpoints/{webhook_endpoint_id}/rotate-secret:
+    post:
+      tags:
+        - Webhook endpoints
+      summary: Rotate a webhook secret
+      description: |
+        Issue a new signing secret. The previous secret keeps verifying
+        deliveries for 24 hours, so you can deploy the new one without dropping
+        events.
+      operationId: rotateWebhookEndpointSecret
+      parameters:
+        - $ref: "#/components/parameters/WebhookEndpointId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookEndpointSecretResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Secret API key. `sk_live_…` reads and writes live data; `sk_test_…`
+        reads and writes test data. Create and rotate keys in the dashboard.
+        There is no publishable key: card details are collected on Zapi's
+        hosted surfaces.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        A unique key for this request, 1–255 characters. Use `req_…` by
+        convention. Keys are retained for 24 hours; replaying a request with
+        the same key and the same body returns the original response.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: req_9x8h2m
+    PaymentId:
+      name: payment_id
+      in: path
+      required: true
+      description: The `pay_…` identifier of the payment.
+      schema:
+        type: string
+        pattern: "^pay_"
+      example: pay_9f2c1a
+    RefundId:
+      name: refund_id
+      in: path
+      required: true
+      description: The `refnd_…` identifier of the refund.
+      schema:
+        type: string
+        pattern: "^refnd_"
+      example: refnd_4k1q7c
+    WebhookEndpointId:
+      name: webhook_endpoint_id
+      in: path
+      required: true
+      description: The `whe_…` identifier of the webhook endpoint.
+      schema:
+        type: string
+        pattern: "^whe_"
+      example: whe_7d2m4p
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: The number of objects to return, from 1 to 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    StartingAfter:
+      name: starting_after
+      in: query
+      required: false
+      description: |
+        A cursor: the `id` of the last object on the previous page. Omit it to
+        start from the newest object.
+      schema:
+        type: string
+    CreatedAfter:
+      name: created_after
+      in: query
+      required: false
+      description: Return objects created at or after this time.
+      schema:
+        type: string
+        format: date-time
+    CreatedBefore:
+      name: created_before
+      in: query
+      required: false
+      description: Return objects created before this time.
+      schema:
+        type: string
+        format: date-time
+    PaymentStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return payments in this state.
+      schema:
+        $ref: "#/components/schemas/PaymentStatus"
+    PaymentMethodFilter:
+      name: payment_method
+      in: query
+      required: false
+      description: Return payments made with this method.
+      schema:
+        $ref: "#/components/schemas/PaymentMethod"
+    ReferenceFilter:
+      name: reference
+      in: query
+      required: false
+      description: Return payments whose `reference` matches exactly.
+      schema:
+        type: string
+    RefundStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return refunds in this state.
+      schema:
+        $ref: "#/components/schemas/RefundStatus"
+    RefundPaymentFilter:
+      name: payment
+      in: query
+      required: false
+      description: Return refunds for this `pay_…` identifier.
+      schema:
+        type: string
+        pattern: "^pay_"
+    WebhookEndpointStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return endpoints in this state.
+      schema:
+        $ref: "#/components/schemas/WebhookEndpointStatus"
+  headers:
+    ZapiRequestId:
+      description: A unique identifier for this request. Include it when you contact support.
+      schema:
+        type: string
+      example: req_8f3k2m
+    IdempotentReplay:
+      description: |
+        Present and `true` only when this response replayed a request made with
+        the same `Idempotency-Key`.
+      schema:
+        type: boolean
+      example: true
+    RetryAfter:
+      description: How long to wait before retrying, in seconds.
+      schema:
+        type: integer
+      example: 2
+  schemas:
+    Currency:
+      type: string
+      description: The ISO 4217 currency code. Zapi supports Ethiopian birr only.
+      enum:
+        - ETB
+    PaymentMethod:
+      type: string
+      description: |
+        The rail the payer pays with. `telebirr` is a wallet, the named banks
+        are bank accounts, and `card` covers card payments.
+      enum:
+        - telebirr
+        - cbe
+        - awash
+        - boa
+        - dashen
+        - card
+    PaymentStatus:
+      type: string
+      description: |
+        `requires_confirmation` means the payment was created with
+        `confirm: false` and has not started. `processing` means the payer or
+        the provider is still acting. `succeeded`, `failed`, and `cancelled`
+        are final. A checkout that expires without payer action ends `failed`
+        with `timed_out`.
+      enum:
+        - requires_confirmation
+        - processing
+        - succeeded
+        - failed
+        - cancelled
+    RefundStatus:
+      type: string
+      description: |
+        `pending` while the provider is processing the refund, then
+        `succeeded` or `failed`.
+      enum:
+        - pending
+        - succeeded
+        - failed
+    RefundReason:
+      type: string
+      description: Why you are refunding the payment.
+      enum:
+        - duplicate
+        - fraudulent
+        - requested_by_payer
+        - other
+    PaymentFailureCode:
+      type: string
+      description: Why a payment failed. `null` unless `status` is `failed`.
+      enum:
+        - insufficient_funds
+        - payer_cancelled
+        - timed_out
+        - provider_declined
+        - invalid_account
+        - provider_unavailable
+    RefundFailureCode:
+      type: string
+      description: Why a refund failed. `null` unless `status` is `failed`.
+      enum:
+        - provider_declined
+        - insufficient_balance
+        - provider_unavailable
+    Metadata:
+      type: object
+      description: |
+        Up to 50 key-value pairs for your own use. Keys are at most 40
+        characters and values at most 500. Zapi stores metadata but does not
+        act on it.
+      maxProperties: 50
+      propertyNames:
+        maxLength: 40
+      additionalProperties:
+        type: string
+        maxLength: 500
+    PaymentCreateRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - payment_method
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The amount in santim. `100000` is 1,000.00 ETB.
+          example: 100000
+        currency:
+          $ref: "#/components/schemas/Currency"
+        payment_method:
+          $ref: "#/components/schemas/PaymentMethod"
+        reference:
+          type: string
+          maxLength: 255
+          description: |
+            Your own identifier for this payment, such as an order number. Zapi
+            echoes it and does not require it to be unique.
+          example: order_1042
+        description:
+          type: string
+          maxLength: 500
+          description: What the payment is for.
+          example: Order 1042
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        confirm:
+          type: boolean
+          default: true
+          description: |
+            Start the payment immediately. Set to `false` to create it in
+            `requires_confirmation` and start it with
+            `POST /v1/payments/{payment_id}/confirm`.
+    Payment:
+      type: object
+      required:
+        - id
+        - object
+        - amount
+        - currency
+        - status
+        - payment_method
+        - reference
+        - description
+        - metadata
+        - checkout_url
+        - expires_at
+        - failure_code
+        - failure_message
+        - created
+        - livemode
+      properties:
+        id:
+          type: string
+          pattern: "^pay_"
+          description: The payment identifier.
+          example: pay_9f2c1a
+        object:
+          type: string
+          const: payment
+          description: The object type.
+        amount:
+          type: integer
+          format: int64
+          description: The amount in santim.
+          example: 100000
+        currency:
+          $ref: "#/components/schemas/Currency"
+        status:
+          $ref: "#/components/schemas/PaymentStatus"
+        payment_method:
+          $ref: "#/components/schemas/PaymentMethod"
+        reference:
+          type:
+            - string
+            - "null"
+          description: Your identifier for this payment, or `null`.
+          example: order_1042
+        description:
+          type:
+            - string
+            - "null"
+          description: What the payment is for, or `null`.
+          example: Order 1042
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        checkout_url:
+          type:
+            - string
+            - "null"
+          format: uri
+          description: |
+            Where to send the payer to approve the payment, or `null` when no
+            payer action is required.
+          example: https://pay.zapihq.com/pay_9f2c1a
+        expires_at:
+          type: string
+          format: date-time
+          description: When the checkout URL stops accepting the payer.
+          example: "2026-10-27T13:30:00Z"
+        failure_code:
+          anyOf:
+            - $ref: "#/components/schemas/PaymentFailureCode"
+            - type: "null"
+          description: Why the payment failed, or `null`.
+        failure_message:
+          type:
+            - string
+            - "null"
+          description: A human-readable explanation of the failure, or `null`.
+          example: The payer's wallet had insufficient funds.
+        created:
+          type: string
+          format: date-time
+          description: When the payment was created.
+          example: "2026-10-27T13:00:00Z"
+        livemode:
+          type: boolean
+          description: |
+            `true` for live data, `false` for test data. Determined by the key
+            used to create the payment.
+          example: true
+    PaymentList:
+      type: object
+      required:
+        - data
+        - has_more
+      properties:
+        data:
+          type: array
+          description: The payments on this page, newest first.
+          items:
+            $ref: "#/components/schemas/Payment"
+        has_more:
+          type: boolean
+          description: Whether another page exists.
+          example: false
+    RefundCreateRequest:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            The amount to refund in santim. Omit it to refund the remaining
+            balance of the payment.
+          example: 25000
+        reason:
+          $ref: "#/components/schemas/RefundReason"
+        description:
+          type: string
+          maxLength: 500
+          description: Why you are refunding the payment, in your own words.
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Refund:
+      type: object
+      required:
+        - id
+        - object
+        - payment
+        - amount
+        - currency
+        - status
+        - reason
+        - description
+        - metadata
+        - failure_code
+        - created
+        - livemode
+      properties:
+        id:
+          type: string
+          pattern: "^refnd_"
+          description: The refund identifier.
+          example: refnd_4k1q7c
+        object:
+          type: string
+          const: refund
+          description: The object type.
+        payment:
+          type: string
+          pattern: "^pay_"
+          description: The payment being refunded.
+          example: pay_9f2c1a
+        amount:
+          type: integer
+          format: int64
+          description: The refunded amount in santim.
+          example: 25000
+        currency:
+          $ref: "#/components/schemas/Currency"
+        status:
+          $ref: "#/components/schemas/RefundStatus"
+        reason:
+          type:
+            - string
+            - "null"
+          description: Why you refunded the payment, or `null`.
+          enum:
+            - duplicate
+            - fraudulent
+            - requested_by_payer
+            - other
+            - null
+        description:
+          type:
+            - string
+            - "null"
+          description: Your own note about the refund, or `null`.
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        failure_code:
+          anyOf:
+            - $ref: "#/components/schemas/RefundFailureCode"
+            - type: "null"
+          description: Why the refund failed, or `null`.
+        created:
+          type: string
+          format: date-time
+          description: When the refund was created.
+          example: "2026-10-27T13:10:00Z"
+        livemode:
+          type: boolean
+          description: Whether this is live or test data.
+          example: true
+    RefundList:
+      type: object
+      required:
+        - data
+        - has_more
+      properties:
+        data:
+          type: array
+          description: The refunds on this page, newest first.
+          items:
+            $ref: "#/components/schemas/Refund"
+        has_more:
+          type: boolean
+          description: Whether another page exists.
+          example: false
+    WebhookEndpointStatus:
+      type: string
+      description: Whether the endpoint receives deliveries.
+      enum:
+        - enabled
+        - disabled
+    EventType:
+      type: string
+      description: |
+        The payment or refund event name, in `resource.state` form. Payout
+        events are defined by the Payouts API.
+      enum:
+        - payment.processing
+        - payment.success
+        - payment.failed
+        - payment.cancelled
+        - refund.success
+        - refund.failed
+    WebhookEventFilter:
+      type: string
+      description: |
+        An event name to subscribe to, or `"*"` for every event.
+      enum:
+        - "*"
+        - payment.processing
+        - payment.success
+        - payment.failed
+        - payment.cancelled
+        - refund.success
+        - refund.failed
+        - payout.processing
+        - payout.success
+        - payout.failed
+        - payout.cancelled
+    WebhookEndpointCreateRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+          description: The HTTPS URL that receives events.
+          example: https://example.com/webhooks/zapi
+        enabled_events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          default:
+            - "*"
+          description: |
+            The events to deliver. Use `"*"` for every event, or list the
+            event names you handle.
+          items:
+            $ref: "#/components/schemas/WebhookEventFilter"
+        description:
+          type: string
+          maxLength: 500
+          description: A note to identify the endpoint.
+          example: Production endpoint
+    WebhookEndpointUpdateRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+          description: The HTTPS URL that receives events.
+        enabled_events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: The events to deliver.
+          items:
+            $ref: "#/components/schemas/WebhookEventFilter"
+        description:
+          type: string
+          maxLength: 500
+          description: A note to identify the endpoint.
+        status:
+          $ref: "#/components/schemas/WebhookEndpointStatus"
+    WebhookEndpoint:
+      type: object
+      required:
+        - id
+        - object
+        - url
+        - enabled_events
+        - description
+        - status
+        - last_success_at
+        - last_failure_at
+        - created
+        - livemode
+      properties:
+        id:
+          type: string
+          pattern: "^whe_"
+          description: The webhook endpoint identifier.
+          example: whe_7d2m4p
+        object:
+          type: string
+          const: webhook_endpoint
+          description: The object type.
+        url:
+          type: string
+          format: uri
+          description: The HTTPS URL that receives events.
+          example: https://example.com/webhooks/zapi
+        enabled_events:
+          type: array
+          description: The events delivered to this endpoint.
+          items:
+            $ref: "#/components/schemas/WebhookEventFilter"
+        description:
+          type:
+            - string
+            - "null"
+          description: A note identifying the endpoint, or `null`.
+        status:
+          $ref: "#/components/schemas/WebhookEndpointStatus"
+        last_success_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: When a delivery last succeeded, or `null`.
+          example: "2026-10-27T13:05:00Z"
+        last_failure_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: When a delivery last failed, or `null`.
+          example: null
+        created:
+          type: string
+          format: date-time
+          description: When the endpoint was created.
+          example: "2026-10-27T13:00:00Z"
+        livemode:
+          type: boolean
+          description: Whether this endpoint receives live or test events.
+          example: true
+    WebhookEndpointWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              pattern: "^whsec_"
+              description: |
+                The signing secret. Store it securely; it is returned only when
+                the endpoint is created or its secret is rotated.
+              example: whsec_live_2b7f9c
+    WebhookEndpointList:
+      type: object
+      required:
+        - data
+        - has_more
+      properties:
+        data:
+          type: array
+          description: The webhook endpoints on this page, newest first.
+          items:
+            $ref: "#/components/schemas/WebhookEndpoint"
+        has_more:
+          type: boolean
+          description: Whether another page exists.
+          example: false
+    WebhookEndpointSecret:
+      type: object
+      required:
+        - id
+        - secret
+        - previous_secret_expires_at
+      properties:
+        id:
+          type: string
+          pattern: "^whe_"
+          description: The webhook endpoint identifier.
+          example: whe_7d2m4p
+        secret:
+          type: string
+          pattern: "^whsec_"
+          description: The new signing secret.
+          example: whsec_live_8c4e1a
+        previous_secret_expires_at:
+          type: string
+          format: date-time
+          description: When the previous secret stops verifying deliveries.
+          example: "2026-10-28T13:00:00Z"
+    EventData:
+      type: object
+      required:
+        - object
+      properties:
+        object:
+          description: The payment or refund that changed.
+          oneOf:
+            - $ref: "#/components/schemas/Payment"
+            - $ref: "#/components/schemas/Refund"
+    Event:
+      type: object
+      required:
+        - id
+        - object
+        - type
+        - created
+        - livemode
+        - data
+      properties:
+        id:
+          type: string
+          pattern: "^evt_"
+          description: The event identifier. Use it to deduplicate deliveries.
+          example: evt_3k8m1p
+        object:
+          type: string
+          const: event
+          description: The object type.
+        type:
+          $ref: "#/components/schemas/EventType"
+        created:
+          type: string
+          format: date-time
+          description: When the event happened.
+          example: "2026-10-27T13:05:00Z"
+        livemode:
+          type: boolean
+          description: Whether this is a live or test event.
+          example: true
+        data:
+          $ref: "#/components/schemas/EventData"
+    ErrorType:
+      type: string
+      description: The error family. It determines the HTTP status class.
+      enum:
+        - invalid_request_error
+        - authentication_error
+        - permission_error
+        - conflict_error
+        - idempotency_error
+        - rate_limit_error
+        - api_error
+    ErrorCode:
+      type: string
+      description: |
+        A stable, machine-readable code. Branch on this value; the `message` is
+        for humans and may change.
+      enum:
+        - parameter_missing
+        - parameter_invalid
+        - parameter_unknown
+        - amount_invalid
+        - currency_unsupported
+        - payment_method_unsupported
+        - metadata_invalid
+        - pagination_invalid
+        - resource_missing
+        - api_key_missing
+        - api_key_invalid
+        - api_key_revoked
+        - livemode_mismatch
+        - key_not_authorized
+        - payment_not_confirmable
+        - payment_not_cancellable
+        - refund_not_allowed
+        - refund_amount_exceeds_remaining
+        - idempotency_key_reuse
+        - idempotency_key_in_progress
+        - rate_limit_exceeded
+        - internal_error
+        - provider_unavailable
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - type
+            - code
+            - message
+          properties:
+            type:
+              $ref: "#/components/schemas/ErrorType"
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            message:
+              type: string
+              description: A human-readable explanation.
+              example: The payment has already succeeded and cannot be cancelled.
+            param:
+              type:
+                - string
+                - "null"
+              description: |
+                The request parameter at fault, as a dot path such as
+                `metadata.order_id`, or `null`.
+              example: null
+  responses:
+    PaymentResponse:
+      description: The payment.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Payment"
+          examples:
+            processing:
+              summary: A telebirr payment awaiting the payer
+              value:
+                id: pay_9f2c1a
+                object: payment
+                amount: 100000
+                currency: ETB
+                status: processing
+                payment_method: telebirr
+                reference: order_1042
+                description: Order 1042
+                metadata: {}
+                checkout_url: https://pay.zapihq.com/pay_9f2c1a
+                expires_at: "2026-10-27T13:30:00Z"
+                failure_code: null
+                failure_message: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+    PaymentWriteResponse:
+      description: The payment, after the request was applied or replayed.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Idempotent-Replay:
+          $ref: "#/components/headers/IdempotentReplay"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Payment"
+          examples:
+            processing:
+              summary: A telebirr payment awaiting the payer
+              value:
+                id: pay_9f2c1a
+                object: payment
+                amount: 100000
+                currency: ETB
+                status: processing
+                payment_method: telebirr
+                reference: order_1042
+                description: Order 1042
+                metadata: {}
+                checkout_url: https://pay.zapihq.com/pay_9f2c1a
+                expires_at: "2026-10-27T13:30:00Z"
+                failure_code: null
+                failure_message: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+    PaymentListResponse:
+      description: A page of payments.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PaymentList"
+          examples:
+            page:
+              summary: One payment and no further pages
+              value:
+                data:
+                  - id: pay_9f2c1a
+                    object: payment
+                    amount: 100000
+                    currency: ETB
+                    status: succeeded
+                    payment_method: telebirr
+                    reference: order_1042
+                    description: Order 1042
+                    metadata: {}
+                    checkout_url: null
+                    expires_at: "2026-10-27T13:30:00Z"
+                    failure_code: null
+                    failure_message: null
+                    created: "2026-10-27T13:00:00Z"
+                    livemode: true
+                has_more: false
+    RefundResponse:
+      description: The refund.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Refund"
+          examples:
+            succeeded:
+              summary: A succeeded partial refund
+              value:
+                id: refnd_4k1q7c
+                object: refund
+                payment: pay_9f2c1a
+                amount: 25000
+                currency: ETB
+                status: succeeded
+                reason: requested_by_payer
+                description: null
+                metadata: {}
+                failure_code: null
+                created: "2026-10-27T13:10:00Z"
+                livemode: true
+    RefundWriteResponse:
+      description: The refund, after the request was applied or replayed.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Idempotent-Replay:
+          $ref: "#/components/headers/IdempotentReplay"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Refund"
+          examples:
+            pending:
+              summary: A refund being processed
+              value:
+                id: refnd_4k1q7c
+                object: refund
+                payment: pay_9f2c1a
+                amount: 25000
+                currency: ETB
+                status: pending
+                reason: requested_by_payer
+                description: null
+                metadata: {}
+                failure_code: null
+                created: "2026-10-27T13:10:00Z"
+                livemode: true
+    RefundListResponse:
+      description: A page of refunds.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RefundList"
+          examples:
+            page:
+              summary: One refund and no further pages
+              value:
+                data:
+                  - id: refnd_4k1q7c
+                    object: refund
+                    payment: pay_9f2c1a
+                    amount: 25000
+                    currency: ETB
+                    status: succeeded
+                    reason: requested_by_payer
+                    description: null
+                    metadata: {}
+                    failure_code: null
+                    created: "2026-10-27T13:10:00Z"
+                    livemode: true
+                has_more: false
+    WebhookEndpointResponse:
+      description: The webhook endpoint.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookEndpoint"
+          examples:
+            enabled:
+              summary: An enabled endpoint receiving every event
+              value:
+                id: whe_7d2m4p
+                object: webhook_endpoint
+                url: https://example.com/webhooks/zapi
+                enabled_events:
+                  - "*"
+                description: Production endpoint
+                status: enabled
+                last_success_at: "2026-10-27T13:05:00Z"
+                last_failure_at: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+    WebhookEndpointCreatedResponse:
+      description: The webhook endpoint, including its signing secret.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Idempotent-Replay:
+          $ref: "#/components/headers/IdempotentReplay"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookEndpointWithSecret"
+          examples:
+            created:
+              summary: An endpoint created with every event enabled
+              value:
+                id: whe_7d2m4p
+                object: webhook_endpoint
+                url: https://example.com/webhooks/zapi
+                enabled_events:
+                  - "*"
+                description: Production endpoint
+                status: enabled
+                last_success_at: null
+                last_failure_at: null
+                created: "2026-10-27T13:00:00Z"
+                livemode: true
+                secret: whsec_live_2b7f9c
+    WebhookEndpointListResponse:
+      description: A page of webhook endpoints.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookEndpointList"
+          examples:
+            page:
+              summary: One endpoint and no further pages
+              value:
+                data:
+                  - id: whe_7d2m4p
+                    object: webhook_endpoint
+                    url: https://example.com/webhooks/zapi
+                    enabled_events:
+                      - "*"
+                    description: Production endpoint
+                    status: enabled
+                    last_success_at: "2026-10-27T13:05:00Z"
+                    last_failure_at: null
+                    created: "2026-10-27T13:00:00Z"
+                    livemode: true
+                has_more: false
+    WebhookEndpointSecretResponse:
+      description: The new secret and the expiry of the previous one.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Idempotent-Replay:
+          $ref: "#/components/headers/IdempotentReplay"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookEndpointSecret"
+          examples:
+            rotated:
+              summary: A rotated secret
+              value:
+                id: whe_7d2m4p
+                secret: whsec_live_8c4e1a
+                previous_secret_expires_at: "2026-10-28T13:00:00Z"
+    NoContent:
+      description: The endpoint was deleted.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+    BadRequest:
+      description: The request is malformed or a parameter is invalid.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidAmount:
+              summary: A non-positive amount
+              value:
+                error:
+                  type: invalid_request_error
+                  code: amount_invalid
+                  message: The amount must be a positive integer in santim.
+                  param: amount
+    Unauthorized:
+      description: The API key is missing, invalid, or revoked.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missingKey:
+              summary: No bearer token
+              value:
+                error:
+                  type: authentication_error
+                  code: api_key_missing
+                  message: Provide a secret key as a bearer token.
+                  param: null
+    Forbidden:
+      description: The key cannot perform this request.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            modeMismatch:
+              summary: A test key touching live data
+              value:
+                error:
+                  type: permission_error
+                  code: livemode_mismatch
+                  message: A test key cannot access live objects.
+                  param: null
+    NotFound:
+      description: The object does not exist.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missing:
+              summary: An unknown payment
+              value:
+                error:
+                  type: invalid_request_error
+                  code: resource_missing
+                  message: No payment exists with that identifier.
+                  param: payment_id
+    Conflict:
+      description: The request conflicts with the object's current state.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notCancellable:
+              summary: Cancelling a succeeded payment
+              value:
+                error:
+                  type: conflict_error
+                  code: payment_not_cancellable
+                  message: The payment has already succeeded and cannot be cancelled.
+                  param: null
+    IdempotencyConflict:
+      description: The idempotency key is being reused with a different request.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            reuse:
+              summary: The key was already used for another body
+              value:
+                error:
+                  type: idempotency_error
+                  code: idempotency_key_reuse
+                  message: This idempotency key was already used with a different request body.
+                  param: null
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            limited:
+              summary: The key exceeded its request rate
+              value:
+                error:
+                  type: rate_limit_error
+                  code: rate_limit_exceeded
+                  message: Too many requests. Retry after the delay in the Retry-After header.
+                  param: null
+    ServerError:
+      description: Zapi could not complete the request.
+      headers:
+        Zapi-Request-Id:
+          $ref: "#/components/headers/ZapiRequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            internal:
+              summary: An unexpected failure
+              value:
+                error:
+                  type: api_error
+                  code: internal_error
+                  message: Something went wrong on our side. Retry the request.
+                  param: null
