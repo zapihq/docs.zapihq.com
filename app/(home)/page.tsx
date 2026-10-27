@@ -10,7 +10,7 @@ const cards = [
     title: "Quickstart",
     description: "Send your first payment in test mode and read the response.",
     hint: "POST /v1/payments",
-    href: "/docs/quickstart",
+    href: "/docs/guides",
     wide: true,
   },
   {
@@ -29,13 +29,13 @@ const cards = [
     title: "Webhooks",
     description: "Receive payment.success and acknowledge it.",
     hint: "payment.success",
-    href: "/docs/webhooks",
+    href: "/docs/concepts",
   },
   {
     title: "Test mode",
     description: "Simulate payments without moving money.",
     hint: "sk_test_",
-    href: "/docs/test-mode",
+    href: "/docs/guides",
   },
 ] as const;
 
@@ -84,7 +84,7 @@ export default function HomePage() {
             className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3"
           >
             <Link
-              href="/docs/quickstart"
+              href="/docs/guides"
               className={`inline-flex h-11 items-center rounded-full bg-brand px-6 text-sm font-medium text-brand-ink transition-colors duration-200 hover:bg-brand/90 active:translate-y-px ${ring}`}
             >
               Start the quickstart
