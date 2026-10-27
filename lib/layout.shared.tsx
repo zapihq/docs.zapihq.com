@@ -21,6 +21,7 @@ export function baseOptions(): BaseLayoutProps {
       { text: "Guides", url: "/docs/guides" },
       { text: "Concepts", url: "/docs/concepts" },
       { text: "API reference", url: "/docs/api-reference" },
+      { text: "Changelog", url: "/changelog" },
     ],
     slots: {
       themeSwitch: ThemeSwitch,

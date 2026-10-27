@@ -11,6 +11,15 @@ The authoritative contract is `content/openapi/payments.yaml` and
 first, then this file and the samples — never copy old lore into individual
 pages.
 
+## Page metadata
+
+- Every page has a `description`. It is required: the schema fails the build
+  without one, because that line is also the page lede, the search result, and
+  the social card.
+- Write it as one sentence in sentence case, and make it stand alone: a reader
+  who sees only the search result should know what the page covers. Never
+  repeat the title.
+
 ## Voice
 
 - Address the reader as **you** — the developer building on Zapi. Instructions

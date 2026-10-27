@@ -197,6 +197,12 @@ export default function HomePage() {
             aria-label="Footer"
             className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm"
           >
+            <Link
+              href="/changelog"
+              className={`text-soft transition-colors duration-200 hover:text-ink ${ring}`}
+            >
+              Changelog
+            </Link>
             <a
               href="https://www.zapihq.com"
               className={`text-soft transition-colors duration-200 hover:text-ink ${ring}`}
