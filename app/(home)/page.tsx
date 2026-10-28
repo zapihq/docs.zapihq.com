@@ -7,6 +7,13 @@ const ring =
 
 const cards = [
   {
+    title: "What is Zapi",
+    description: "What the gateway covers, and how a payment moves.",
+    hint: "payment_method",
+    href: "/docs/what-is-zapi",
+    wide: true,
+  },
+  {
     title: "Quickstart",
     description: "Send your first payment in test mode and read the response.",
     hint: "POST /v1/payments",
@@ -36,6 +43,12 @@ const cards = [
     description: "Simulate payments without moving money.",
     hint: "sk_test_",
     href: "/docs/guides/test-mode",
+  },
+  {
+    title: "Comparisons",
+    description: "Zapi against Chapa, Santimpay, and Arifpay.",
+    hint: "not published",
+    href: "/docs/comparisons",
   },
 ] as const;
 
@@ -197,12 +210,6 @@ export default function HomePage() {
             aria-label="Footer"
             className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm"
           >
-            <Link
-              href="/changelog"
-              className={`text-soft transition-colors duration-200 hover:text-ink ${ring}`}
-            >
-              Changelog
-            </Link>
             <a
               href="https://www.zapihq.com"
               className={`text-soft transition-colors duration-200 hover:text-ink ${ring}`}

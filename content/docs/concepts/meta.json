@@ -1,6 +1,7 @@
 {
   "title": "Concepts",
   "description": "How payments, payouts, settlement, and events fit together at Zapi.",
+  "icon": "Lightbulb",
   "pages": [
     "payments",
     "payouts",
