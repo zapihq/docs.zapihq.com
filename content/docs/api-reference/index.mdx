@@ -4,8 +4,59 @@ description: The REST API for payments and payouts, generated from the OpenAPI c
 ---
 
 The reference documents every endpoint, field, and response for payments and
-payouts. Amounts are integer santim, currency is uppercase `ETB`, and every
-`POST` requires an `Idempotency-Key`.
+payouts. It is generated from `content/openapi/payments.yaml` and
+`content/openapi/payouts.yaml`; those files are the contract, and the pages
+change when the specs change.
 
-The pages are generated from `content/openapi/*.yaml`; the contract is the source
-of truth, not the prose.
+The base URL is `https://api.zapihq.com/v1`. Amounts are integer santim, currency
+is uppercase `ETB`, and every `POST` requires an `Idempotency-Key`.
+
+## Start with the rules
+
+<Cards>
+  <Card title="Authentication" href="/docs/api-reference/authentication">
+    Bearer keys, live and test modes, and key errors.
+  </Card>
+  <Card title="Idempotency" href="/docs/api-reference/idempotency">
+    The required header, replay behavior, and conflict codes.
+  </Card>
+  <Card title="Pagination" href="/docs/api-reference/pagination">
+    Cursors, limits, filters, and the page envelope.
+  </Card>
+  <Card title="Errors" href="/docs/api-reference/errors">
+    The error envelope, types, and the complete code list.
+  </Card>
+</Cards>
+
+## Endpoint groups
+
+<Cards>
+  <Card title="Payments" href="/docs/api-reference/payments">
+    Create, list, retrieve, confirm, and cancel payments.
+  </Card>
+  <Card title="Refunds" href="/docs/api-reference/refunds">
+    Create, list, and retrieve partial or full refunds.
+  </Card>
+  <Card title="Payouts" href="/docs/api-reference/payouts">
+    Create, list, retrieve, and cancel payouts.
+  </Card>
+  <Card title="Webhook endpoints" href="/docs/api-reference/webhook-endpoints">
+    Register, update, rotate, and delete the URLs that receive events.
+  </Card>
+</Cards>
+
+## Conventions
+
+- Paths are versioned in the URL: `/v1/payments`, `/v1/payouts`.
+- JSON fields are snake_case. Multi-word path segments are kebab-case.
+- Timestamps are ISO 8601 UTC.
+- Identifiers carry typed prefixes: `pay_`, `refnd_`, `po_`, `rcp_`, `whe_`,
+  `evt_`, `req_`, `whsec_`.
+- `GET` requests do not take an idempotency key. `POST` requests always do.
+- The API returns `200` for a successful write, not `201`.
+
+## Versioning
+
+The docs are single-version; the API version lives in the `/v1` path. When a
+future version ships, it gets its own path rather than a docs selector. Changes
+that affect the contract land on the [changelog](/changelog).

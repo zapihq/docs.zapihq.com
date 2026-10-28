@@ -1,0 +1,163 @@
+---
+title: Accept a payment
+description: Create a payment, send the payer to checkout, and handle confirmation, cancellation, and failure.
+---
+
+A payment is a request to move money from a payer to you, tracked through its
+own lifecycle. Create it with one call, send the payer to the hosted checkout,
+and wait for the result. Zapi collects the payer's phone number, bank account, or
+card on that page, so your request never carries payer details.
+
+The API base URL is `https://api.zapihq.com/v1`.
+
+## Create the payment
+
+`amount` is an integer in santim: `100000` is 1,000.00 ETB. `currency` is the
+uppercase ISO 4217 code, and the only value today is `ETB`. `payment_method` is
+one of `telebirr`, `cbe`, `awash`, `boa`, `dashen`, or `card`.
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "telebirr",
+    "reference": "order_1042",
+    "description": "Order 1042",
+    "metadata": {
+      "order_id": "1042"
+    }
+  }'
+```
+
+`reference` is your identifier for the payment. Zapi echoes it and does not
+require it to be unique. `metadata` holds up to 50 string key-value pairs for
+your own use; Zapi stores it and does not act on it.
+
+By default `confirm` is `true`, so the payment starts immediately. The response
+includes `checkout_url` whenever the payer must approve the payment:
+
+```json
+{
+  "id": "pay_9f2c1a",
+  "object": "payment",
+  "amount": 100000,
+  "currency": "ETB",
+  "status": "processing",
+  "payment_method": "telebirr",
+  "reference": "order_1042",
+  "description": "Order 1042",
+  "metadata": { "order_id": "1042" },
+  "checkout_url": "https://pay.zapihq.com/pay_9f2c1a",
+  "expires_at": "2026-10-27T13:30:00Z",
+  "failure_code": null,
+  "failure_message": null,
+  "created": "2026-10-27T13:00:00Z",
+  "livemode": true
+}
+```
+
+Store the `pay_...` identifier and your `reference` before redirecting the payer.
+If the create request times out, retry it with the same `Idempotency-Key` rather
+than creating a second payment.
+
+## Send the payer to checkout
+
+Redirect the payer to `checkout_url`. They pick or confirm their payment method
+on that page. When they finish, Zapi changes the payment status and sends an
+event to your webhook endpoint.
+
+If the payer does not act before `expires_at`, the checkout stops accepting them
+and the payment ends `failed` with `failure_code: "timed_out"`.
+
+`checkout_url` is `null` when the payment needs no payer action. Do not redirect
+to a null value; check `status` and `checkout_url` before you redirect.
+
+## Create now, start later
+
+Set `confirm: false` to create the payment in `requires_confirmation` without
+starting it. Start it later with:
+
+```bash
+curl -X POST https://api.zapihq.com/v1/payments/pay_9f2c1a/confirm \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_4m2k9p"
+```
+
+Confirming a payment that is already `processing` or `succeeded` returns it
+unchanged. Confirming a `failed` or `cancelled` payment returns `409` with
+`payment_not_confirmable`.
+
+## Cancel a payment
+
+Cancel a payment that has not succeeded:
+
+```bash
+curl -X POST https://api.zapihq.com/v1/payments/pay_9f2c1a/cancel \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_7c1v3n"
+```
+
+Cancelling an already cancelled payment returns it unchanged. Cancelling a
+succeeded payment returns `409` with `payment_not_cancellable`. Both calls are
+`POST`, so both require an `Idempotency-Key`.
+
+## Read the result
+
+The payment status is one of:
+
+| Status                  | Meaning                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `requires_confirmation` | Created with `confirm: false` and not started.        |
+| `processing`            | The payer or the provider is still acting.            |
+| `succeeded`             | Final. The payment completed.                         |
+| `failed`                | Final. Read `failure_code` for the reason.            |
+| `cancelled`             | Final. The payment was cancelled before it succeeded. |
+
+Failure codes are `insufficient_funds`, `payer_cancelled`, `timed_out`,
+`provider_declined`, `invalid_account`, and `provider_unavailable`. Read the
+code, not `failure_message`; the message is for humans and may change.
+
+Retrieve the payment when you need certainty:
+
+```bash
+curl https://api.zapihq.com/v1/payments/pay_9f2c1a \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+List payments newest first with filters for `status`, `payment_method`,
+`reference`, `created_after`, and `created_before`. Pass `starting_after` with
+the last `id` on the page to fetch the next one.
+
+## Handle the request errors
+
+| Status | Code                         | What to do                                       |
+| ------ | ---------------------------- | ------------------------------------------------ |
+| `400`  | `amount_invalid`             | Send a positive integer in santim.               |
+| `400`  | `currency_unsupported`       | Send `ETB`.                                      |
+| `400`  | `payment_method_unsupported` | Send a method from the list above.               |
+| `401`  | `api_key_missing`            | Send the bearer token.                           |
+| `403`  | `livemode_mismatch`          | Use a key from the same mode as the data.        |
+| `409`  | `idempotency_key_reuse`      | Use a new key for a different request body.      |
+| `429`  | `rate_limit_exceeded`        | Wait for `Retry-After`, then retry.              |
+| `500`  | `internal_error`             | Retry with backoff and the same idempotency key. |
+
+Every error uses the envelope described in [Errors](/docs/api-reference/errors).
+Branch on `code`; it is stable, while `message` is not.
+
+## Next
+
+<Cards>
+  <Card title="Receive webhooks" href="/docs/guides/receive-webhooks">
+    Fulfil the order when payment.success arrives.
+  </Card>
+  <Card title="Refund a payment" href="/docs/guides/refund-a-payment">
+    Return all or part of the amount after success.
+  </Card>
+  <Card title="Payment methods" href="/docs/payment-methods">
+    Compare what each method needs and supports.
+  </Card>
+</Cards>

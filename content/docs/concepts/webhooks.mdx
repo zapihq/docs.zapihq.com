@@ -1,0 +1,78 @@
+---
+title: Webhooks and events
+description: How Zapi records changes as events and delivers them to your webhook endpoint.
+---
+
+An event is a record that something happened, delivered to a merchant's webhook
+endpoint, such as `payment.success`. Events are how your server learns that a
+payment, refund, or payout changed state without polling.
+
+## The event model
+
+Every event has an `evt_...` identifier, a `type`, a `created` timestamp,
+`livemode`, and `data.object` containing the object that changed. The payload
+is a snapshot of the object at the time of the event, not a patch.
+
+The ten event names are fixed:
+
+| Resource | Events                                                                         |
+| -------- | ------------------------------------------------------------------------------ |
+| Payment  | `payment.processing`, `payment.success`, `payment.failed`, `payment.cancelled` |
+| Refund   | `refund.success`, `refund.failed`                                              |
+| Payout   | `payout.processing`, `payout.success`, `payout.failed`, `payout.cancelled`     |
+
+Do not invent events beyond these. A webhook endpoint subscribes to a list of
+event names or to `"*"` for all of them.
+
+## Endpoints and secrets
+
+A webhook endpoint is the merchant-owned HTTPS URL registered to receive events.
+Create it through `POST /v1/webhook-endpoints`; the response includes a `whsec_`
+signing secret once. Store the secret and use it to verify the `Zapi-Signature`
+header on every delivery.
+
+Rotate a secret with `POST /v1/webhook-endpoints/{id}/rotate-secret`. The old
+secret keeps verifying deliveries for 24 hours, so you can deploy the new one
+without dropping events. Disable an endpoint to pause deliveries without deleting
+it; delete it to stop deliveries immediately.
+
+## Delivery
+
+Deliveries are at least once. Zapi makes three attempts per event. A retry
+carries the same `evt_...` identifier, so a handler that deduplicates on that
+identifier can accept the same event twice and act once.
+
+Return a `2xx` response as soon as the event is accepted. Slow work belongs
+after the response, in a queue or a background job. A non-`2xx` response counts
+as a failed delivery.
+
+Events can arrive out of order. Apply a change only when it moves the object
+forward, and retrieve the object when the event body is not enough.
+
+Refiring an event is a dashboard action; there is no public refire endpoint.
+
+## Signature
+
+The contract fixes an HMAC signature over the timestamp and raw body, sent in
+the `Zapi-Signature` header. Verify it against the raw body before parsing JSON;
+re-serialising the body changes the bytes and breaks the check.
+
+The exact header encoding is part of the contract. The verification steps are in
+[Receive webhooks](/docs/guides/receive-webhooks).
+
+## Next
+
+<Cards>
+  <Card title="Receive webhooks" href="/docs/guides/receive-webhooks">
+    Register an endpoint and handle each event once.
+  </Card>
+  <Card
+    title="Webhook endpoints reference"
+    href="/docs/api-reference/webhook-endpoints"
+  >
+    Check the endpoint fields and responses.
+  </Card>
+  <Card title="Idempotency" href="/docs/concepts/idempotency">
+    Make the request that follows an event safe.
+  </Card>
+</Cards>

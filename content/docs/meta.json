@@ -1,4 +1,10 @@
 {
   "title": "Documentation",
-  "pages": ["index", "guides", "concepts", "payment-methods", "api-reference"]
+  "pages": [
+    "quickstart",
+    "guides",
+    "concepts",
+    "payment-methods",
+    "api-reference"
+  ]
 }

@@ -1,0 +1,87 @@
+---
+title: Payments
+description: How a Zapi payment moves from a create request through checkout to a final state.
+---
+
+A payment is a request to move money from a payer to a merchant, tracked through
+its own lifecycle. Zapi creates it, the payer approves it on a hosted surface,
+and the provider moves the money.
+
+Payments are push-style: one create call with `confirm` starts the flow. There is
+no separate capture or void step. A payment either succeeds, fails, or is
+cancelled before it succeeds.
+
+## The lifecycle
+
+```text
+requires_confirmation ──confirm──▶ processing ──▶ succeeded
+                                      │
+                                      ├──▶ failed
+                                      └──▶ cancelled
+```
+
+`requires_confirmation` exists only when you create a payment with
+`confirm: false`. It has not started and has no payer action yet.
+
+`processing` means the payer or the provider is still acting. The payment may
+have a `checkout_url` for the payer, and it may take time for the provider to
+answer. Do not fulfil an order in this state.
+
+`succeeded`, `failed`, and `cancelled` are final. A failed payment carries a
+`failure_code`; a succeeded payment carries none. A cancelled payment was
+cancelled before it succeeded, either by you through the API or by the payer on
+the checkout page.
+
+## Checkout
+
+The create request never carries payer details. Phone numbers, bank accounts, and
+card numbers are collected on Zapi's hosted checkout. That boundary keeps payer
+data out of your servers.
+
+When the payer must act, the payment response includes `checkout_url`. Send the
+payer there. When no payer action is required, `checkout_url` is `null`.
+
+If the payer does not act before `expires_at`, the checkout stops accepting them
+and the payment ends `failed` with `timed_out`.
+
+## Fulfilment
+
+Fulfil on `payment.success`, not when the create request returns. The create
+response arrives while the payment is still `processing`.
+
+Events are delivered at least once. Use the `evt_...` identifier to deduplicate,
+and retrieve the payment when you need the current state. See
+[Webhooks and events](/docs/concepts/webhooks).
+
+## Refunds
+
+A refund returns money to a payer after a payment succeeds. Refunds are partial,
+repeatable, and capped at the captured amount. A refund is its own object
+(`refnd_...`) with its own lifecycle, and a payment can have more than one.
+
+## Modes
+
+Every payment carries `livemode`. A payment created with a test key has
+`livemode: false` and is isolated from live data. See
+[Test mode](/docs/guides/test-mode).
+
+## What the contract does not include
+
+- No capture or void step. Create with `confirm` and cancel before success.
+- No payer phone number, bank account, or card field in the request.
+- No fee or settlement-time field. Those figures are not published until a
+  verified source exists.
+
+## Next
+
+<Cards>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Build the create, checkout, and result flow.
+  </Card>
+  <Card title="Refund a payment" href="/docs/guides/refund-a-payment">
+    Return all or part of a captured payment.
+  </Card>
+  <Card title="Payments reference" href="/docs/api-reference/payments">
+    Check every field and response.
+  </Card>
+</Cards>

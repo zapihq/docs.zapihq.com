@@ -1,0 +1,53 @@
+---
+title: Test mode
+description: Run payments, refunds, and payouts against test data with simulated outcomes.
+---
+
+Test mode is the mode in which payments run with simulated funds and mock
+failures, no real money involved. It uses the same endpoints, request shapes,
+and webhook events as live mode.
+
+Use a key beginning with `sk_test_`. The mode comes from the key, not from a
+request parameter: there are no `test_*` parameters and no separate test
+endpoints. Objects created in test mode carry `"livemode": false`; live objects
+carry `"livemode": true`.
+
+## Choose an outcome
+
+Test outcomes are chosen on the hosted checkout. Create a payment exactly as you
+would in live mode, send the payer to `checkout_url`, and pick the simulated
+result there. This exercises the same two halves of the flow as production: your
+create request and your webhook handler.
+
+No test phone numbers, test bank accounts, or error-injection parameters are
+published. If you need a specific provider failure, choose it on the checkout
+page rather than adding a parameter to the request.
+
+## Cover the paths that hurt
+
+Run at least these cases before you go live:
+
+| Case                                       | What to assert                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `payment.success`                          | The order is fulfilled once, and a duplicate event does not fulfil it again. |
+| `payment.failed` with `insufficient_funds` | The payer sees a recoverable message and can retry.                          |
+| `payment.failed` with `timed_out`          | An abandoned checkout releases the order.                                    |
+| `payment.cancelled`                        | Cancelling before success stops fulfilment.                                  |
+| `refund.success`                           | A partial refund updates the amount you owe the payer.                       |
+| `refund.failed`                            | A failed refund leaves the original payment intact.                          |
+| `payout.success`                           | The recipient is marked paid once.                                           |
+| `payout.failed`                            | A failed payout does not debit the recipient as paid.                        |
+
+## Test data stays in test mode
+
+A test key cannot touch live objects. Test events are delivered only to webhook
+endpoints created with a test key. Keep a separate endpoint for test mode so a
+simulated `payment.success` can never reach production fulfilment code.
+
+When you switch to `sk_live_...`, create fresh live objects. Do not try to
+promote a test payment, refund, payout, or webhook endpoint into live data.
+
+## Reset
+
+Test mode is disposable. Create new payments, refunds, and payouts as needed;
+there is no migration step into live mode.

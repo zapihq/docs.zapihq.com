@@ -1,0 +1,48 @@
+---
+title: Virtual accounts
+description: Account identifiers that route inbound funds to a single merchant.
+---
+
+A virtual account is an account identifier that routes inbound funds to a single
+merchant. Use one when you need to attribute incoming bank transfers to a
+specific merchant, branch, or purpose rather than a shared collection account.
+
+## What a virtual account is
+
+A virtual account looks like an account number to the sender, but it is not a
+separate bank account. It is an identifier that tells Zapi which merchant the
+incoming transfer belongs to. The funds still settle to the merchant's balance.
+
+Virtual accounts are for collecting money. They are not wallets, sub-accounts, or
+payout destinations; use a recipient (`rcp_...`) for payouts.
+
+## In the current contract
+
+The public API does not expose a virtual-account endpoint. The OpenAPI contract
+in this repository defines `acct_...` identifiers, but no route creates,
+retrieves, or lists them.
+
+Do not build against an endpoint that is not in the contract. If you need a
+virtual account today, contact Zapi for the current onboarding process and the
+events your integration should expect. When the endpoint ships, it lands in the
+contract first and on this page second.
+
+## Reconciliation
+
+Treat an inbound transfer to a virtual account as a payment to the merchant it
+belongs to. Reconcile from the identifier, not from the sender's name or
+reference, because those are outside your control.
+
+## Next
+
+<Cards>
+  <Card title="Settlement" href="/docs/concepts/settlement">
+    How inbound funds become a merchant balance.
+  </Card>
+  <Card title="Currencies and amounts" href="/docs/concepts/currencies">
+    The rules for ETB and santim.
+  </Card>
+  <Card title="API reference" href="/docs/api-reference">
+    The endpoints that exist today.
+  </Card>
+</Cards>

@@ -1,0 +1,83 @@
+---
+title: Pagination
+description: Page through payments, refunds, payouts, and webhook endpoints with cursors.
+---
+
+List endpoints return one page at a time, newest first. Page with a cursor, not
+an offset: pass the `id` of the last object you received as `starting_after`.
+
+## The page envelope
+
+```json
+{
+  "data": [
+    {
+      "id": "pay_9f2c1a",
+      "object": "payment",
+      "amount": 100000,
+      "currency": "ETB",
+      "status": "succeeded",
+      "payment_method": "telebirr",
+      "reference": "order_1042",
+      "description": "Order 1042",
+      "metadata": {},
+      "checkout_url": null,
+      "expires_at": "2026-10-27T13:30:00Z",
+      "failure_code": null,
+      "failure_message": null,
+      "created": "2026-10-27T13:00:00Z",
+      "livemode": true
+    }
+  ],
+  "has_more": false
+}
+```
+
+`data` holds the objects on this page. `has_more` says whether another page
+exists. There is no total count and no offset parameter.
+
+## Parameters
+
+| Parameter        | Type      | Meaning                                                                             |
+| ---------------- | --------- | ----------------------------------------------------------------------------------- |
+| `limit`          | integer   | Objects per page, 1–100. Defaults to 20.                                            |
+| `starting_after` | string    | The `id` of the last object on the previous page. Omit it to start from the newest. |
+| `created_after`  | date-time | Objects created at or after this time.                                              |
+| `created_before` | date-time | Objects created before this time.                                                   |
+
+Pass `starting_after` with the last `id` from `data`. Stop when `has_more` is
+`false`; do not request the next page when it is false.
+
+## Filters by list
+
+| Endpoint                    | Extra filters                           |
+| --------------------------- | --------------------------------------- |
+| `GET /v1/payments`          | `status`, `payment_method`, `reference` |
+| `GET /v1/refunds`           | `status`, `payment`                     |
+| `GET /v1/payouts`           | `status`, `destination`                 |
+| `GET /v1/webhook-endpoints` | `status`                                |
+
+`reference` matches exactly. `payment` and `destination` take the typed
+identifier (`pay_...`, `rcp_...`). Date filters apply to `created`.
+
+## Example
+
+Fetch the first two payments:
+
+```bash
+curl "https://api.zapihq.com/v1/payments?limit=2" \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+If the response has `"has_more": true`, take the `id` of the last object in
+`data` and fetch the next page:
+
+```bash
+curl "https://api.zapihq.com/v1/payments?limit=2&starting_after=pay_9f2c1a" \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+## Errors
+
+An invalid cursor or limit returns `400` with type `invalid_request_error` and
+code `pagination_invalid`. A cursor from a different list or mode is invalid.

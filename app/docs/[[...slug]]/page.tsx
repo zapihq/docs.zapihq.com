@@ -15,11 +15,32 @@ import { createRelativeLink } from "fumadocs-ui/mdx";
 import { gitConfig } from "@/lib/shared";
 import { Feedback } from "@/components/feedback/client";
 import { onPageFeedbackAction } from "@/lib/github";
+import { OpenAPIPage } from "@/components/api-page";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
+
+  if (page.type === "openapi") {
+    return (
+      <DocsPage
+        toc={page.data.toc}
+        tableOfContent={{ style: "clerk" }}
+        tableOfContentPopover={{ style: "clerk" }}
+        breadcrumb={{ enabled: false }}
+      >
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <DocsDescription className="mb-0">
+          {page.data.description}
+        </DocsDescription>
+        <DocsBody>
+          <OpenAPIPage {...page.data.getOpenAPIPageProps()} />
+        </DocsBody>
+        <Feedback onSendAction={onPageFeedbackAction} />
+      </DocsPage>
+    );
+  }
 
   const MDX = page.data.body;
   const lastModifiedTime = page.data.lastModified;
@@ -63,7 +84,7 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata(
-  props: PageProps<"/docs/[[...slug]]">,
+  props: PageProps<"/docs/[[...slug]]">
 ): Promise<Metadata> {
   const params = await props.params;
   const page = source.getPage(params.slug);

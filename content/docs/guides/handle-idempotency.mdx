@@ -1,0 +1,92 @@
+---
+title: Handle idempotency
+description: Use the Idempotency-Key header to make a retried POST safe and effective once.
+---
+
+Every `POST` to Zapi requires an `Idempotency-Key` header. The key makes a retry
+safe: if the first request reached Zapi, a retry with the same key and the same
+body returns the original response instead of creating a second payment, refund,
+payout, or webhook endpoint.
+
+Keys are retained for 24 hours.
+
+## Send a key
+
+A key is 1–255 characters. `req_` is the convention. Send a new key for each
+logical operation, not for each network attempt.
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "telebirr",
+    "reference": "order_1042"
+  }'
+```
+
+If the request times out, send the same key and the same body again. If the
+first request succeeded, Zapi replays its response and adds
+`Idempotent-Replay: true`. If the first request never reached Zapi, the retry
+creates the payment once.
+
+## Choose keys
+
+- Derive the key from the operation: an order identifier, a refund request
+  identifier, or a random UUID. Store it with the operation before the first
+  attempt.
+- Use one key per intended effect. Two refunds of the same payment need two
+  keys.
+- Do not generate a fresh key inside a retry loop. That defeats the guarantee.
+- Do not reuse a key for a different body. Zapi returns `409` with
+  `idempotency_key_reuse`.
+
+A key that is still being processed returns `409` with
+`idempotency_key_in_progress`. Retry the request later with the same key; do not
+switch keys.
+
+## What counts as the same request
+
+The key is paired with the request body. Retry with the same method, path, and
+body. Changing a field — even `metadata` — makes it a different request, and Zapi
+returns `409`.
+
+The response headers tell you what happened:
+
+| Header                    | Meaning                                                       |
+| ------------------------- | ------------------------------------------------------------- |
+| `Zapi-Request-Id`         | Identifies this HTTP request. Include it in support requests. |
+| `Idempotent-Replay: true` | This response is a replay, not a new effect.                  |
+
+`Zapi-Request-Id` is not an idempotency key. A new request gets a new request
+identifier even when it replays an earlier effect.
+
+## Errors
+
+| Status | Code                          | What to do                                  |
+| ------ | ----------------------------- | ------------------------------------------- |
+| `409`  | `idempotency_key_reuse`       | Use a new key for a different request body. |
+| `409`  | `idempotency_key_in_progress` | Retry later with the same key.              |
+| `400`  | `parameter_missing`           | Send the `Idempotency-Key` header.          |
+
+See [Errors](/docs/api-reference/errors) for the full envelope.
+
+## Next
+
+<Cards>
+  <Card title="Idempotency concept" href="/docs/concepts/idempotency">
+    Why the guarantee exists and what it covers.
+  </Card>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Put the key in the create-payment request.
+  </Card>
+  <Card
+    title="API reference: idempotency"
+    href="/docs/api-reference/idempotency"
+  >
+    The header contract in one place.
+  </Card>
+</Cards>

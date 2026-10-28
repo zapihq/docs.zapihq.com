@@ -1,0 +1,5 @@
+{
+  "title": "Payment methods",
+  "description": "The providers a payer can pay through, and what each one needs.",
+  "pages": ["telebirr", "cbe", "awash", "boa", "dashen", "card"]
+}

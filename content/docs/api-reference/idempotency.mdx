@@ -1,0 +1,68 @@
+---
+title: Idempotency
+description: The required Idempotency-Key header, replay behavior, and conflict codes for POST requests.
+---
+
+Every `POST` request requires an `Idempotency-Key` header. The header makes a
+retry safe: if the original request reached Zapi, the retry returns the original
+response rather than applying the effect twice.
+
+```http
+Idempotency-Key: req_9x8h2m
+```
+
+## The header
+
+| Property   | Value                |
+| ---------- | -------------------- |
+| Name       | `Idempotency-Key`    |
+| Required   | Yes, on every `POST` |
+| Length     | 1–255 characters     |
+| Convention | `req_...`            |
+| Retention  | 24 hours             |
+
+`GET` requests do not take the header.
+
+## Replay
+
+Send the same key with the same method, path, and body within 24 hours. The
+original response is returned, with:
+
+```http
+Idempotent-Replay: true
+```
+
+A replay does not create a second payment, refund, payout, or webhook endpoint.
+The response body is the original response, including the original identifiers.
+
+## Conflicts
+
+| Status | Type                | Code                          | Meaning                                                 |
+| ------ | ------------------- | ----------------------------- | ------------------------------------------------------- |
+| `409`  | `idempotency_error` | `idempotency_key_reuse`       | The key was already used with a different request body. |
+| `409`  | `idempotency_error` | `idempotency_key_in_progress` | The original request is still being processed.          |
+
+For `idempotency_key_reuse`, use a new key for the different request. For
+`idempotency_key_in_progress`, retry later with the same key.
+
+## What counts as the same request
+
+The key is paired with the request body. Any change — a different amount, a
+different destination, an added metadata pair — makes it a different request.
+Changing only the key creates a new effect even if the body is identical.
+
+## Scope
+
+The guarantee covers every mutating endpoint:
+
+- `POST /v1/payments`
+- `POST /v1/payments/{payment_id}/confirm`
+- `POST /v1/payments/{payment_id}/cancel`
+- `POST /v1/payments/{payment_id}/refunds`
+- `POST /v1/payouts`
+- `POST /v1/payouts/{payout_id}/cancel`
+- `POST /v1/webhook-endpoints`
+- `POST /v1/webhook-endpoints/{id}/rotate-secret`
+
+It does not deduplicate webhook deliveries. Use the event identifier for that;
+see [Webhooks and events](/docs/concepts/webhooks).

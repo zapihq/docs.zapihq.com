@@ -1,0 +1,125 @@
+---
+title: Send a payout
+description: Pay an onboarded recipient from your Zapi balance and track the payout to its final state.
+---
+
+A payout sends money from your Zapi balance to a recipient you have onboarded.
+Create the recipient in the dashboard once, then reference its `rcp_...`
+identifier in every payout. The public API does not create or modify recipients.
+
+The API base URL is `https://api.zapihq.com/v1`.
+
+## Before you send
+
+- The recipient exists and is `active`. An `inactive` recipient cannot receive a
+  payout until you reactivate it in the dashboard.
+- Your balance covers the amount.
+- You have the recipient's `rcp_...` identifier and, if you need it, your own
+  reference in `metadata`.
+
+## Create the payout
+
+`amount` is an integer in santim: `500000` is 5,000.00 ETB. `currency` is `ETB`.
+`destination` is the recipient identifier.
+
+```bash
+curl https://api.zapihq.com/v1/payouts \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_5t7y1u" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 500000,
+    "currency": "ETB",
+    "destination": "rcp_4k1q7c",
+    "description": "Seller settlement, October"
+  }'
+```
+
+A new payout starts `pending`:
+
+```json
+{
+  "id": "po_9f2c1a",
+  "object": "payout",
+  "amount": 500000,
+  "currency": "ETB",
+  "status": "pending",
+  "destination": "rcp_4k1q7c",
+  "description": "Seller settlement, October",
+  "metadata": {},
+  "failure_code": null,
+  "created": "2026-10-27T13:00:00Z",
+  "livemode": true
+}
+```
+
+Store the `po_...` identifier. A payout is not final when the create request
+returns; wait for `payout.success`, `payout.failed`, or `payout.cancelled`.
+
+## Follow the status
+
+| Status       | Meaning                                        |
+| ------------ | ---------------------------------------------- |
+| `pending`    | Queued. It can still be cancelled.             |
+| `processing` | The provider is moving the money.              |
+| `succeeded`  | Final. The recipient was paid.                 |
+| `failed`     | Final. Read `failure_code` for the reason.     |
+| `cancelled`  | Final. The payout was cancelled while pending. |
+
+Failure codes are `insufficient_balance`, `invalid_destination`,
+`provider_declined`, and `provider_unavailable`.
+
+## Cancel a pending payout
+
+```bash
+curl -X POST https://api.zapihq.com/v1/payouts/po_9f2c1a/cancel \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_2p6w9s"
+```
+
+Cancelling an already cancelled payout returns it unchanged. A payout that has
+reached `processing`, `succeeded`, or `failed` cannot be cancelled and returns
+`409` with `payout_not_cancellable`. Cancel before the provider picks the payout
+up; after that, the money is already moving.
+
+## Retrieve and list
+
+Retrieve one payout when you need the current state:
+
+```bash
+curl https://api.zapihq.com/v1/payouts/po_9f2c1a \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+List payouts newest first, filtered by `status` or `destination`, and paginate
+with `starting_after`. See [Pagination](/docs/api-reference/pagination).
+
+## Errors
+
+| Status | Code                     | What to do                                               |
+| ------ | ------------------------ | -------------------------------------------------------- |
+| `400`  | `amount_invalid`         | Send a positive integer in santim.                       |
+| `400`  | `currency_unsupported`   | Send `ETB`.                                              |
+| `400`  | `parameter_invalid`      | Check the destination identifier and description length. |
+| `403`  | `livemode_mismatch`      | Use a key from the same mode as the recipient.           |
+| `404`  | `resource_missing`       | The recipient or payout does not exist in this mode.     |
+| `409`  | `recipient_inactive`     | Reactivate the recipient in the dashboard.               |
+| `409`  | `payout_not_cancellable` | The payout already reached the provider.                 |
+| `429`  | `rate_limit_exceeded`    | Wait for `Retry-After`, then retry.                      |
+| `503`  | `provider_unavailable`   | Retry later with the same idempotency key.               |
+
+Every error uses the envelope described in [Errors](/docs/api-reference/errors).
+
+## Next
+
+<Cards>
+  <Card title="Receive webhooks" href="/docs/guides/receive-webhooks">
+    React to payout.success and payout.failed.
+  </Card>
+  <Card title="Payouts concept" href="/docs/concepts/payouts">
+    How payouts and recipients fit together.
+  </Card>
+  <Card title="Payouts reference" href="/docs/api-reference/payouts">
+    Check every field and response.
+  </Card>
+</Cards>

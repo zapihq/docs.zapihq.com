@@ -1,0 +1,61 @@
+---
+title: Authentication
+description: Authenticate Zapi requests with a live or test secret key sent as a bearer token.
+---
+
+Every request needs a secret API key in the `Authorization` header:
+
+```http
+Authorization: Bearer sk_live_...
+```
+
+The key determines the mode. `sk_live_...` reads and writes live data;
+`sk_test_...` reads and writes test data. There is no separate mode header.
+
+Create and rotate keys in the dashboard. A key is shown once when created.
+
+## Key errors
+
+| Status | Type                   | Code                 | Meaning                                                                |
+| ------ | ---------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `401`  | `authentication_error` | `api_key_missing`    | No bearer token was sent.                                              |
+| `401`  | `authentication_error` | `api_key_invalid`    | The token is not a Zapi key.                                           |
+| `401`  | `authentication_error` | `api_key_revoked`    | The key has been revoked.                                              |
+| `403`  | `permission_error`     | `key_not_authorized` | The key cannot perform this request.                                   |
+| `403`  | `permission_error`     | `livemode_mismatch`  | A test key touched a live object, or a live key touched a test object. |
+
+All five use the standard error envelope:
+
+```json
+{
+  "error": {
+    "type": "authentication_error",
+    "code": "api_key_missing",
+    "message": "Provide a secret key as a bearer token.",
+    "param": null
+  }
+}
+```
+
+## Modes are isolated
+
+A key only sees objects from its own mode. A payment created with a live key has
+`livemode: true`; a test payment has `livemode: false`. A test key cannot retrieve
+a live payment, create a refund against it, or send a live payout.
+
+Keep a separate key for each environment. Do not reuse a test key in production
+or a live key in tests.
+
+## Key handling
+
+- Store keys server-side, in a secret manager or environment variable.
+- Never send a secret key to a browser or mobile client, or commit it to a
+  repository.
+- Revoke a key immediately if it leaks. A revoked key has no grace period.
+- Send the key in the header, never in a URL or query string.
+
+## Request identifiers
+
+Every response includes `Zapi-Request-Id`. It identifies the HTTP request, not
+the object or the idempotency key. Include it when you contact support about a
+failure.

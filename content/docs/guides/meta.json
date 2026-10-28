@@ -1,0 +1,16 @@
+{
+  "title": "Guides",
+  "description": "Task-focused guides for accepting payments, sending payouts, and going live on Zapi.",
+  "pages": [
+    "api-keys",
+    "test-mode",
+    "go-live",
+    "---Tasks---",
+    "accept-a-payment",
+    "send-a-payout",
+    "refund-a-payment",
+    "receive-webhooks",
+    "handle-idempotency",
+    "errors"
+  ]
+}

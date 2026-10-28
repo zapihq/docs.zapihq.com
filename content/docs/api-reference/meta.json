@@ -1,0 +1,14 @@
+{
+  "title": "API reference",
+  "description": "The REST API for payments and payouts, generated from the OpenAPI contract.",
+  "pages": [
+    "authentication",
+    "idempotency",
+    "pagination",
+    "errors",
+    "payments",
+    "refunds",
+    "payouts",
+    "webhook-endpoints"
+  ]
+}

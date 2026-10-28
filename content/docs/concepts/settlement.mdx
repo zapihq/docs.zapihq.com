@@ -1,0 +1,59 @@
+---
+title: Settlement
+description: How captured payments become a merchant balance, and how payouts draw on it.
+---
+
+Settlement is the process that makes captured funds available as a merchant
+balance. A successful payment is captured from the payer; settlement is what
+turns that capture into balance you can pay out.
+
+## Capture and balance
+
+When a payment reaches `succeeded`, the amount is captured. The payment object
+records the amount in santim and stays retrievable. A refund against that
+payment reduces what the merchant keeps, in whole or in part.
+
+A payout debits the merchant balance. The balance must cover the payout before
+the provider is asked to move money; otherwise the payout fails with
+`insufficient_balance`.
+
+## What is not published
+
+Settlement timing, fees, and reserve rules are not published in these docs until
+a verified source backs them. Do not infer a schedule from a test-mode result, a
+marketing figure, or a provider's own timeline. If your reconciliation depends on
+a specific availability time, confirm it with Zapi before you build around it.
+
+## Reconciliation
+
+The API gives you the objects, not a settlement ledger:
+
+- List payments and filter by `created_after` and `created_before`.
+- List refunds and filter by `payment`.
+- List payouts and filter by `destination`.
+
+The dashboard holds the balance view. Reconcile from the objects and the
+dashboard rather than from event arrival order; events are delivered at least
+once and may arrive late.
+
+## Multi-party settlement
+
+Payouts let one merchant pay recipients from its balance. The merchant remains
+the account holder; recipients are destinations, not separate merchant accounts.
+There is no split-payment object in the current contract. If you need to divide a
+single payment across parties, model each share as a payout after the payment
+succeeds.
+
+## Next
+
+<Cards>
+  <Card title="Payouts" href="/docs/concepts/payouts">
+    How money leaves the balance.
+  </Card>
+  <Card title="Payments" href="/docs/concepts/payments">
+    How a payment reaches success.
+  </Card>
+  <Card title="Webhooks and events" href="/docs/concepts/webhooks">
+    How to learn that a payment succeeded.
+  </Card>
+</Cards>
