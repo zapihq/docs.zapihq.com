@@ -31,18 +31,25 @@ export const changelogSource = loader(toFumadocsSource(changelog, []), {
 });
 
 /**
- * Sidebar sections are collapsible buttons, never pages, and they carry no
- * "Overview" child: the section's index page stays reachable at its URL, but the
- * list only shows the pages that do the work, the way Stripe and Better Auth
- * document themselves.
+ * Sidebar sections are collapsible buttons, never pages, and by default they
+ * carry no "Overview" child: the section's index page stays reachable at its
+ * URL, but the list only shows the pages that do the work, the way Stripe and
+ * Better Auth document themselves.
+ *
+ * Pass `keepFolderIndex` when the tree links rather than lists, such as the
+ * navbar menu: there the folder's own index page is the right destination.
  */
-export function getDocsPageTree(): PageTree.Root {
+export function getDocsPageTree({
+  keepFolderIndex = false,
+}: {
+  keepFolderIndex?: boolean;
+} = {}): PageTree.Root {
   const tree = source.getPageTree();
 
   return {
     ...tree,
     children: tree.children.map((node) => {
-      if (node.type !== "folder" || !node.index) return node;
+      if (node.type !== "folder" || !node.index || keepFolderIndex) return node;
 
       const folder: PageTree.Folder = { ...node };
       delete folder.index;
