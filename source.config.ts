@@ -18,7 +18,7 @@ export const docs = defineDocs({
     schema: pageSchema.extend({
       description: z.string().min(1),
       // Sitemap priority relative to other docs pages. Omit it for the default.
-      priority: z.number().optional(),
+      priority: z.number().min(0).max(1).optional(),
     }),
     postprocess: {
       includeProcessedMarkdown: true,
