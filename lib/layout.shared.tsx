@@ -56,13 +56,16 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
-        <Image
-          src="/logo.svg"
-          alt={appName}
-          width={30}
-          height={20}
-          className="h-8 w-auto"
-        />
+        <div className="flex items-center gap-2">
+          <Image
+            src="/logo.svg"
+            alt=""
+            width={30}
+            height={20}
+            className="h-6 rounded-full w-auto"
+          />
+          <span>{appName}</span>
+        </div>
       ),
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
