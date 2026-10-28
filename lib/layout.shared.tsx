@@ -1,9 +1,13 @@
-import type { BaseLayoutProps, MenuItemType } from "fumadocs-ui/layouts/shared";
+import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import type * as PageTree from "fumadocs-core/page-tree";
 import { appName, gitConfig } from "./shared";
 import { getDocsPageTree } from "./source";
 import { ThemeSwitch } from "@/components/theme-switch";
+import { DocsMenu, type DocsMenuGroup } from "@/components/docs-menu";
+import { ChevronDown } from "lucide-react";
 import Image from "next/image";
+
+const DEFAULT_GROUP = "Documentation";
 
 function firstPageUrl(folder: PageTree.Folder): string | undefined {
   for (const node of folder.children) {
@@ -15,30 +19,37 @@ function firstPageUrl(folder: PageTree.Folder): string | undefined {
   }
 }
 
-// The menu shows the same tree as the sidebar: root separators become group
-// labels, and each root page or folder becomes one link. Adding a page to the
-// root meta.json is enough; nothing here names a page.
-function getDocsMenu(): MenuItemType["items"] {
-  const items: MenuItemType["items"] = [];
+// The menu shows the same tree as the sidebar: root separators start a group,
+// and each root page or folder becomes one row with its own description.
+// Adding a page to the root meta.json is enough; nothing here names a page.
+function getDocsMenuGroups(): DocsMenuGroup[] {
+  const groups: DocsMenuGroup[] = [];
+  let group: DocsMenuGroup = { name: DEFAULT_GROUP, items: [] };
 
-  for (const node of getDocsPageTree().children) {
+  const flush = () => {
+    if (group.items.length > 0) groups.push(group);
+  };
+
+  for (const node of getDocsPageTree({ keepFolderIndex: true }).children) {
     if (node.type === "separator") {
-      items.push({
-        type: "custom",
-        children: (
-          <p className="col-span-full px-3 pt-2 pb-1 text-xs font-medium text-fd-muted-foreground">
-            {node.name}
-          </p>
-        ),
-      });
+      flush();
+      group = { name: node.name ?? DEFAULT_GROUP, items: [] };
       continue;
     }
 
-    const url = node.type === "page" ? node.url : firstPageUrl(node);
-    if (url) items.push({ text: node.name, url, icon: node.icon });
+    const url =
+      node.type === "page" ? node.url : (node.index?.url ?? firstPageUrl(node));
+    if (!url) continue;
+
+    group.items.push({
+      name: node.name ?? url,
+      url,
+      description: node.description,
+    });
   }
 
-  return items;
+  flush();
+  return groups;
 }
 
 export function baseOptions(): BaseLayoutProps {
@@ -56,7 +67,24 @@ export function baseOptions(): BaseLayoutProps {
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
     links: [
-      { type: "menu", text: "Docs", items: getDocsMenu() },
+      {
+        type: "menu",
+        text: (
+          <span className="inline-flex items-center gap-1">
+            Documentation
+            <ChevronDown
+              className="docs-trigger-icon opacity-70 transition-transform duration-240 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none max-[639px]:hidden"
+              aria-hidden
+            />
+          </span>
+        ),
+        items: [
+          {
+            type: "custom",
+            children: <DocsMenu groups={getDocsMenuGroups()} />,
+          },
+        ],
+      },
       { text: "Changelog", url: "/changelog" },
     ],
     slots: {

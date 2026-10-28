@@ -82,6 +82,44 @@
   border-bottom-color: transparent;
 }
 
+/* The docs menu replaces Fumadocs' full-width card grid with one sheet under
+   the bar. The index inside it is styled in components/docs-menu.tsx. */
+#nd-nav > div > div:last-child:has([data-docs-menu]) {
+  width: 100%;
+  max-width: 1152px;
+  background-color: var(--panel);
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 24px 48px -28px rgb(0 0 0 / 0.35); /* taste-skill-ignore: floating menu overlay */
+}
+
+#nd-nav *:has(> [data-docs-menu]) {
+  display: block;
+  padding: 0;
+  gap: 0;
+}
+
+/* Rows rise in sequence when the panel opens. */
+@keyframes docs-menu-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+#nd-nav button[data-state="open"] .docs-trigger-icon {
+  transform: rotate(180deg);
+}
+
+/* The mobile menu prints the trigger label in a plain paragraph; the down
+   chevron belongs to the desktop control only. */
+#nd-nav p .docs-trigger-icon {
+  display: none;
+}
+
 /* Docs shell: a measured reading column and a quieter, more legible sidebar. */
 #nd-page {
   max-width: 860px;
