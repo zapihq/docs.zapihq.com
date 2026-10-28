@@ -1,0 +1,13 @@
+{
+  "title": "Concepts",
+  "description": "How payments, payouts, settlement, and events fit together at Zapi.",
+  "pages": [
+    "payments",
+    "payouts",
+    "virtual-accounts",
+    "settlement",
+    "webhooks",
+    "idempotency",
+    "currencies"
+  ]
+}

@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+
+/* Fumadocs styles search matches with the CSS Custom Highlight API. Lightning
+   CSS, which Turbopack uses, cannot parse `::highlight(fd-search)` yet and warns
+   on every build, so keep those two utilities out of the compiled stylesheet.
+   The highlight still renders with the browser's default styling. */
+@source not inline("[&_::highlight(fd-search)]:text-fd-primary");
+@source not inline("[&_::highlight(fd-search)]:underline");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -72,4 +80,103 @@
 
 #nd-nav > div {
   border-bottom-color: transparent;
+}
+
+/* Docs shell: a measured reading column and a quieter, more legible sidebar. */
+#nd-page {
+  max-width: 860px;
+}
+
+#nd-page .prose :is(p, li) {
+  max-width: 70ch;
+  text-wrap: pretty;
+}
+
+#nd-page .prose :is(h2, h3) {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+/* Next/previous cards: the direction is the small label, the page title is the
+   line that matters, and it truncates instead of stretching the card. */
+#nd-page > div[class*="@container"] a {
+  min-width: 0;
+  border-color: transparent;
+  background-color: var(--panel);
+}
+
+#nd-page > div[class*="@container"] a:hover {
+  background-color: var(--panel-2);
+}
+
+#nd-page > div[class*="@container"] a > div {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--soft);
+}
+
+#nd-page > div[class*="@container"] a > p {
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#nd-page > div[class*="@container"] a.text-end > p {
+  text-align: end;
+}
+
+/* Docs sidebar: flat, quiet navigation, the way mature API docs read. Sections
+   are buttons, so their labels line up with the pages inside them. */
+#nd-sidebar {
+  border-inline-end-color: var(--line);
+}
+
+#nd-sidebar button[data-state] {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--soft);
+}
+
+#nd-sidebar button[data-state="open"] {
+  color: var(--ink);
+}
+
+#nd-sidebar button[data-state]:hover {
+  color: var(--ink);
+}
+
+#nd-sidebar button[data-state] > svg:last-child {
+  opacity: 0.55;
+}
+
+/* Sub-group labels ("Tasks") are quieter than the sections they sit in. */
+#nd-sidebar p {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--soft);
+}
+
+#nd-sidebar a[data-active="true"] {
+  background-color: color-mix(in oklab, var(--brand) 12%, transparent);
+  color: var(--brand);
+  font-weight: 500;
+}
+
+#nd-sidebar a[data-active="true"]:hover {
+  background-color: color-mix(in oklab, var(--brand) 16%, transparent);
+  color: var(--brand);
+}
+
+/* Browser surfaces belong to the palette too. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+::selection {
+  background: var(--brand-quiet);
+  color: var(--ink);
 }

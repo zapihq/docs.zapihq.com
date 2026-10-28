@@ -1,0 +1,61 @@
+---
+title: Idempotency
+description: Why every mutating Zapi request carries an Idempotency-Key, and what the guarantee covers.
+---
+
+An idempotency key is a key sent with a mutating request that makes retries of
+that request safe and effective once. Zapi requires one on every `POST`, because
+a network timeout does not tell you whether the server applied the request.
+
+## The guarantee
+
+Send the same key with the same method, path, and body within 24 hours, and Zapi
+applies the effect once. A replay returns the original response with
+`Idempotent-Replay: true`. A retry that arrives before the first request finished
+returns `409` with `idempotency_key_in_progress`.
+
+The pairing is key plus body. Reusing a key with a different body returns `409`
+with `idempotency_key_reuse`; it does not overwrite the first effect.
+
+## What it covers
+
+Every endpoint that changes state:
+
+- Creating, confirming, or cancelling a payment.
+- Creating a refund.
+- Creating or cancelling a payout.
+- Creating a webhook endpoint or rotating its secret.
+
+Read-only requests (`GET`) do not take a key.
+
+## What it does not cover
+
+It does not make a different request safe. A new key creates a new effect even
+if the body is identical. For example, two full refunds with two keys are two
+refunds, subject to the remaining balance.
+
+It also does not deduplicate webhook events. Use the event's `evt_...`
+identifier for that; see [Webhooks and events](/docs/concepts/webhooks).
+
+## Choosing a key
+
+Use `req_` by convention and derive the value from the operation: an order
+identifier, a refund request identifier, or a random UUID generated before the
+first attempt. Store it alongside the operation so a retry reuses it.
+
+Never generate a new key inside a retry loop. That turns a retry into a second
+effect.
+
+## Next
+
+<Cards>
+  <Card title="Handle idempotency" href="/docs/guides/handle-idempotency">
+    Apply the key in your retry path.
+  </Card>
+  <Card title="Idempotency reference" href="/docs/api-reference/idempotency">
+    The header, replay, and conflict codes.
+  </Card>
+  <Card title="Handle errors" href="/docs/guides/errors">
+    Decide which failures are safe to retry.
+  </Card>
+</Cards>

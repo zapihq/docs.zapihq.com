@@ -1,0 +1,64 @@
+---
+title: telebirr
+description: Accept telebirr wallet payments, send payouts to telebirr wallets, and handle the payer flow.
+---
+
+telebirr is a mobile wallet and one lowercase word in prose and payloads. Use
+`"payment_method": "telebirr"` to collect a payment from a telebirr wallet, and a
+`telebirr` recipient to pay money out to one.
+
+## Collect a payment
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "telebirr",
+    "reference": "order_1042"
+  }'
+```
+
+The request carries no phone number. The payer approves the payment on the hosted
+checkout at `checkout_url`, where Zapi collects the wallet details. When they
+finish, Zapi sends `payment.success` or `payment.failed`.
+
+## Payouts
+
+A telebirr recipient has `type: "wallet"` and `provider: "telebirr"`. Reference
+its `rcp_...` identifier in `POST /v1/payouts`. Recipients are onboarded in the
+dashboard; the public API does not create them.
+
+## Refunds
+
+A succeeded telebirr payment can be refunded in full or in part. The refund
+starts `pending` and ends `succeeded` or `failed`. A failed refund leaves the
+original payment intact.
+
+## Failure codes
+
+Payment failures use `insufficient_funds`, `payer_cancelled`, `timed_out`,
+`provider_declined`, `invalid_account`, and `provider_unavailable`. Read the
+`failure_code`; `failure_message` is for humans and may change.
+
+## Fees and timing
+
+Fees and settlement times are not published in these docs until a verified source
+backs them. Do not infer them from test-mode behavior.
+
+## Next
+
+<Cards>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Build the full payment flow.
+  </Card>
+  <Card title="Send a payout" href="/docs/guides/send-a-payout">
+    Pay an onboarded telebirr recipient.
+  </Card>
+  <Card title="Payment methods" href="/docs/payment-methods">
+    Compare telebirr with bank accounts and cards.
+  </Card>
+</Cards>

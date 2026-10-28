@@ -1,0 +1,74 @@
+---
+title: Go-live checklist
+description: Verify the integration, keys, and webhooks before you switch from test mode to live mode.
+---
+
+Work through this list once in test mode, then repeat the items that touch keys
+and endpoints after you switch. There is no automated migration from test mode
+to live mode.
+
+## Keys
+
+- [ ] Live key `sk_live_...` is stored in your secret manager, not in source
+      control.
+- [ ] The key is available to your server only. No browser or mobile client
+      receives it.
+- [ ] Test and live keys are separate deployments or separate configuration.
+- [ ] A leaked or old key is revoked.
+
+## Payments
+
+- [ ] `POST /v1/payments` sends `amount` as an integer in santim, `currency` as
+      `ETB`, and one supported `payment_method`.
+- [ ] Every `POST` sends a unique `Idempotency-Key`.
+- [ ] Your server stores the `pay_...` identifier and your own `reference`
+      together.
+- [ ] The payer is redirected to `checkout_url` and can return to your site
+      after they finish or abandon the payment.
+- [ ] `expires_at` is respected. An abandoned checkout ends `failed` with
+      `timed_out`.
+- [ ] Status is read from `status`, and failure detail from `failure_code`,
+      not from a human-readable message.
+- [ ] The payment is fulfilled on `payment.success`, not when the create request
+      returns.
+
+## Webhooks
+
+- [ ] A live webhook endpoint is registered with an HTTPS URL.
+- [ ] The endpoint returns a `2xx` response before it does slow work.
+- [ ] Deliveries are deduplicated by the `evt_...` identifier.
+- [ ] The signature is verified against the raw request body before the JSON is
+      parsed.
+- [ ] `payment.success`, `payment.failed`, `payment.cancelled`,
+      `refund.success`, and `refund.failed` are handled.
+- [ ] `payout.processing`, `payout.success`, `payout.failed`, and
+      `payout.cancelled` are handled if you send payouts.
+- [ ] A missed event can be recovered by retrieving the payment or payout.
+- [ ] The endpoint secret `whsec_...` is stored and can be rotated without
+      dropping deliveries.
+
+## Money movement
+
+- [ ] Refunds are capped at the captured amount, and a second refund does not
+      exceed the remainder.
+- [ ] A payout is created only for an active recipient (`rcp_...`) with enough
+      balance.
+- [ ] A payout is cancelled only while it is `pending`.
+- [ ] Your ledger records `amount` in santim and never uses a floating-point
+      representation.
+
+## Operations
+
+- [ ] `429` responses respect `Retry-After`, and `5xx` responses are retried
+      with backoff.
+- [ ] `409` responses on confirm, cancel, or refund are treated as state
+      conflicts, not transient failures.
+- [ ] Logs include the `Zapi-Request-Id` response header for support.
+- [ ] Test mode still works after launch so you can reproduce issues without
+      moving money.
+
+## After launch
+
+Watch the first live payments and payouts end to end: create, checkout, event,
+retrieve, and reconciliation. Keep the test endpoint running so a simulated
+failure never reaches live fulfilment code.

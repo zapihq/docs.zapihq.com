@@ -3,7 +3,68 @@ title: Payment methods
 description: The providers a payer can pay through, and what each one needs.
 ---
 
-A payment method is the instrument a payer uses; a provider is the channel that
-executes it. Zapi routes telebirr wallets, EthSwitch, and local bank accounts
-through one create-payment request, and each provider page covers capabilities,
-timing, and what the payer sees.
+A payment method is the instrument a payer uses; a provider is the institution
+that operates it. Zapi routes telebirr wallets, bank accounts, and cards through
+one create-payment request, named by `payment_method`.
+
+EthSwitch is an interbank switch that connects the banks. It is not a payment
+method and never appears as a `payment_method` value.
+
+## Compare methods
+
+| Method                            | `payment_method` | Type         | Payments | Refunds | Payouts |
+| --------------------------------- | ---------------- | ------------ | -------- | ------- | ------- |
+| telebirr                          | `telebirr`       | Wallet       | Yes      | Yes     | Yes     |
+| Commercial Bank of Ethiopia (CBE) | `cbe`            | Bank account | Yes      | Yes     | Yes     |
+| Awash Bank                        | `awash`          | Bank account | Yes      | Yes     | Yes     |
+| Bank of Abyssinia (BOA)           | `boa`            | Bank account | Yes      | Yes     | Yes     |
+| Dashen Bank                       | `dashen`         | Bank account | Yes      | Yes     | Yes     |
+| Card                              | `card`           | Card         | Yes      | Yes     | No      |
+
+"Payouts" means the method can be a recipient's destination. Card recipients are
+not supported: a payout goes to a bank account or a telebirr wallet.
+
+Fees and settlement times are not published in these docs until a verified
+source backs them.
+
+## The request is the same
+
+Choose the method with `payment_method`; the rest of the create request does not
+change. The payer supplies the phone number, bank account, or card on the hosted
+checkout, never in your request.
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "cbe",
+    "reference": "order_1042"
+  }'
+```
+
+The response includes `checkout_url` whenever the payer must approve the payment.
+Send them there, then wait for `payment.success`.
+
+## Choose a method
+
+- **telebirr** for wallet payments where the payer approves on their phone.
+- **Bank accounts** for payers who pay from CBE, Awash, BOA, or Dashen.
+- **Card** for card payments. Cards cannot receive payouts.
+
+## Next
+
+<Cards>
+  <Card title="telebirr" href="/docs/payment-methods/telebirr">
+    Wallet payments and payouts.
+  </Card>
+  <Card title="CBE" href="/docs/payment-methods/cbe">
+    Commercial Bank of Ethiopia accounts.
+  </Card>
+  <Card title="Cards" href="/docs/payment-methods/card">
+    Card payments and the PCI boundary.
+  </Card>
+</Cards>

@@ -18,9 +18,10 @@ export function baseOptions(): BaseLayoutProps {
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
     links: [
-      { text: "Guides", url: "/docs/guides" },
-      { text: "Concepts", url: "/docs/concepts" },
-      { text: "API reference", url: "/docs/api-reference" },
+      { text: "Guides", url: "/docs/guides/api-keys" },
+      { text: "Concepts", url: "/docs/concepts/payments" },
+      { text: "Payment methods", url: "/docs/payment-methods/telebirr" },
+      { text: "API reference", url: "/docs/api-reference/payments" },
       { text: "Changelog", url: "/changelog" },
     ],
     slots: {

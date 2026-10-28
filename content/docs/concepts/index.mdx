@@ -1,8 +1,32 @@
 ---
 title: Concepts
-description: How payments, payouts, and events fit together at Zapi.
+description: How payments, payouts, settlement, and events fit together at Zapi.
 ---
 
-Concepts explain the model behind the API: what a payment is, how a payout
-reaches a recipient, how virtual accounts work, what settlement means, and why
-every mutating request carries an idempotency key.
+Concepts explain the model behind the API: what each object is, how it moves
+through its lifecycle, and why the contract works the way it does. Each page
+links to the guide that does the job.
+
+<Cards>
+  <Card title="Payments" href="/docs/concepts/payments">
+    How a payment moves from create to a final state.
+  </Card>
+  <Card title="Payouts" href="/docs/concepts/payouts">
+    How money leaves your balance for an onboarded recipient.
+  </Card>
+  <Card title="Virtual accounts" href="/docs/concepts/virtual-accounts">
+    Account identifiers that attribute inbound funds.
+  </Card>
+  <Card title="Settlement" href="/docs/concepts/settlement">
+    How captured funds become a merchant balance.
+  </Card>
+  <Card title="Webhooks and events" href="/docs/concepts/webhooks">
+    The event model, delivery, and deduplication.
+  </Card>
+  <Card title="Idempotency" href="/docs/concepts/idempotency">
+    Why every mutating request needs a key.
+  </Card>
+  <Card title="Currencies and amounts" href="/docs/concepts/currencies">
+    ETB, santim, and the rules for numeric values.
+  </Card>
+</Cards>

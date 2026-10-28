@@ -1,0 +1,57 @@
+---
+title: API keys
+description: Create, store, and rotate the live and test keys that authenticate Zapi requests.
+---
+
+Zapi authenticates every request with a secret API key sent as a bearer token.
+Keys read and write one mode of data: `sk_live_...` for live data, `sk_test_...`
+for test data.
+
+Create and rotate keys in the dashboard. A key is shown once at creation; store
+it in your secret manager, not in source control or a client bundle.
+
+## Send the key
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_test_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "telebirr"
+  }'
+```
+
+A request without a key returns `401` with code `api_key_missing`. An invalid or
+revoked key returns `401` with `api_key_invalid` or `api_key_revoked`. The
+`type` is `authentication_error` in all three cases.
+
+## Keep modes apart
+
+A test key cannot read or write live objects, and a live key cannot read or
+write test objects. Trying returns `403` with code `livemode_mismatch` and type
+`permission_error`.
+
+Every object carries `livemode`, so you can tell which mode created it. Test
+data is isolated from live data: a payment created with a test key never moves
+money and never appears in live reports.
+
+## Rotate a key
+
+1. Create the replacement key in the dashboard.
+2. Deploy it to your servers.
+3. Confirm requests succeed with the new key.
+4. Revoke the old key.
+
+Requests made with a revoked key fail `401` with `api_key_revoked`. There is no
+grace period on a revoked key, so finish the deploy before you revoke.
+
+## What not to do
+
+- Do not send a secret key from a browser, mobile app, or public repository. The
+  key can read and move money.
+- Do not reuse one key across test and live environments.
+- Do not put a key in a URL, a log line, or an error report. If a key leaks,
+  revoke it and create a replacement.

@@ -10,32 +10,32 @@ const cards = [
     title: "Quickstart",
     description: "Send your first payment in test mode and read the response.",
     hint: "POST /v1/payments",
-    href: "/docs/guides",
+    href: "/docs/quickstart",
     wide: true,
   },
   {
     title: "API reference",
     description: "Endpoints, request fields, and response shapes.",
     hint: "/v1/payments",
-    href: "/docs/api-reference",
+    href: "/docs/api-reference/payments",
   },
   {
     title: "Payment methods",
     description: "telebirr wallets, bank accounts, and cards.",
     hint: "provider",
-    href: "/docs/payment-methods",
+    href: "/docs/payment-methods/telebirr",
   },
   {
     title: "Webhooks",
     description: "Receive payment.success and acknowledge it.",
     hint: "payment.success",
-    href: "/docs/concepts",
+    href: "/docs/guides/receive-webhooks",
   },
   {
     title: "Test mode",
     description: "Simulate payments without moving money.",
     hint: "sk_test_",
-    href: "/docs/guides",
+    href: "/docs/guides/test-mode",
   },
 ] as const;
 
@@ -84,13 +84,13 @@ export default function HomePage() {
             className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3"
           >
             <Link
-              href="/docs/guides"
+              href="/docs/quickstart"
               className={`inline-flex h-11 items-center rounded-full bg-brand px-6 text-sm font-medium text-brand-ink transition-colors duration-200 hover:bg-brand/90 active:translate-y-px ${ring}`}
             >
               Start the quickstart
             </Link>
             <Link
-              href="/docs/api-reference"
+              href="/docs/api-reference/payments"
               className={`text-sm font-medium underline decoration-line underline-offset-4 transition-colors duration-200 hover:decoration-ink ${ring}`}
             >
               Read the API reference

@@ -1,0 +1,99 @@
+---
+title: Errors
+description: The Zapi error envelope, error types, HTTP statuses, and complete code list.
+---
+
+Every error response uses one envelope, whatever the endpoint:
+
+```json
+{
+  "error": {
+    "type": "invalid_request_error",
+    "code": "amount_invalid",
+    "message": "The amount must be a positive integer in santim.",
+    "param": "amount"
+  }
+}
+```
+
+| Field     | Meaning                                                |
+| --------- | ------------------------------------------------------ |
+| `type`    | The error family. It determines the HTTP status class. |
+| `code`    | A stable, machine-readable code. Branch on this value. |
+| `message` | A human-readable explanation. It may change.           |
+| `param`   | The request field at fault as a dot path, or `null`.   |
+
+## Types and statuses
+
+| `type`                  | HTTP status  | Meaning                                                            |
+| ----------------------- | ------------ | ------------------------------------------------------------------ |
+| `invalid_request_error` | `400`, `404` | A parameter is invalid or the object does not exist.               |
+| `authentication_error`  | `401`        | The key is missing, invalid, or revoked.                           |
+| `permission_error`      | `403`        | The key cannot perform this request, or the mode does not match.   |
+| `conflict_error`        | `409`        | The object's current state does not allow the request.             |
+| `idempotency_error`     | `409`        | The key is reused with a different body, or still in progress.     |
+| `rate_limit_error`      | `429`        | Too many requests.                                                 |
+| `api_error`             | `500`, `503` | Zapi could not complete the request, or a provider is unavailable. |
+
+`404` uses `invalid_request_error` with code `resource_missing`, not a separate
+not-found type.
+
+## Codes
+
+### Request and value
+
+| Code                         | Meaning                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `parameter_missing`          | A required field or header is absent.                                    |
+| `parameter_invalid`          | A field has the wrong shape or value.                                    |
+| `parameter_unknown`          | The body contains a field the endpoint does not accept.                  |
+| `amount_invalid`             | The amount is not a positive integer in santim.                          |
+| `currency_unsupported`       | The currency is not `ETB`.                                               |
+| `payment_method_unsupported` | The payment method is not supported.                                     |
+| `metadata_invalid`           | Metadata exceeds 50 pairs, a 40-character key, or a 500-character value. |
+| `pagination_invalid`         | The cursor or limit is invalid.                                          |
+| `resource_missing`           | No object exists with that identifier.                                   |
+
+### Authentication and permission
+
+| Code                 | Meaning                                        |
+| -------------------- | ---------------------------------------------- |
+| `api_key_missing`    | No bearer token was sent.                      |
+| `api_key_invalid`    | The token is not a Zapi key.                   |
+| `api_key_revoked`    | The key has been revoked.                      |
+| `livemode_mismatch`  | The key and the object are in different modes. |
+| `key_not_authorized` | The key cannot perform this request.           |
+
+### Payment, refund, and payout state
+
+| Code                              | Meaning                                               |
+| --------------------------------- | ----------------------------------------------------- |
+| `payment_not_confirmable`         | The payment cannot be confirmed in its current state. |
+| `payment_not_cancellable`         | The payment has already succeeded.                    |
+| `refund_not_allowed`              | The payment is not refundable.                        |
+| `refund_amount_exceeds_remaining` | The refund exceeds the unrefunded balance.            |
+| `payout_not_cancellable`          | The payout has reached the provider.                  |
+| `recipient_inactive`              | The payout recipient is not active.                   |
+
+### Idempotency, rate, and availability
+
+| Code                          | Meaning                                         |
+| ----------------------------- | ----------------------------------------------- |
+| `idempotency_key_reuse`       | The key was used with a different request body. |
+| `idempotency_key_in_progress` | The original request is still running.          |
+| `rate_limit_exceeded`         | The request rate is too high.                   |
+| `internal_error`              | An unexpected failure on Zapi's side.           |
+| `provider_unavailable`        | The destination provider is temporarily down.   |
+
+The payments and payouts specs each define a closed list. A code outside the
+spec is not part of the contract.
+
+## Reading a failure
+
+1. Read the HTTP status and `type`.
+2. Branch on `code`. Do not match on `message`.
+3. If `param` is present, fix that field.
+4. Decide whether to retry: `429` after `Retry-After`, `500` and `503` with
+   backoff, `409` only after re-reading the object.
+
+See [Handle errors](/docs/guides/errors) for the retry rules.

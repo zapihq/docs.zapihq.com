@@ -1,0 +1,64 @@
+---
+title: Currencies and amounts
+description: The rules for ETB, integer santim, timestamps, and identifiers in Zapi payloads.
+---
+
+Zapi collects and pays out Ethiopian birr. The currency code is `ETB`, uppercase
+in prose and in every payload. No other currency is supported.
+
+## Amounts are integer santim
+
+Every amount is an integer in santim, the minor unit of ETB. One birr is 100
+santim, so `100000` is 1,000.00 ETB and `25000` is 250.00 ETB.
+
+Send integers only. Do not send a decimal, a string, or a float. Never use a
+floating-point type in your own ledger for a Zapi amount; store the integer
+santim value and format it for display at the edge.
+
+In prose, write amounts with the numeral first and the uppercase code after it:
+`1,000 ETB`. Do not write `Br`, `ETB 1,000.00`, or lowercase `etb`.
+
+## Timestamps
+
+Timestamps are ISO 8601 in UTC, for example `2026-10-27T13:00:00Z`. Date filters
+(`created_after`, `created_before`) take the same format. Do not send a local
+time without an offset.
+
+## Identifiers
+
+Every object carries a typed prefix, and you should treat the identifier as
+opaque after the prefix:
+
+| Object           | Prefix   | Example          |
+| ---------------- | -------- | ---------------- |
+| Payment          | `pay_`   | `pay_9f2c1a`     |
+| Payout           | `po_`    | `po_9f2c1a`      |
+| Recipient        | `rcp_`   | `rcp_4k1q7c`     |
+| Refund           | `refnd_` | `refnd_4k1q7c`   |
+| Virtual account  | `acct_`  | `acct_1Lj2kf`    |
+| Event            | `evt_`   | `evt_3k8m1p`     |
+| Webhook endpoint | `whe_`   | `whe_7d2m4p`     |
+| Idempotency key  | `req_`   | `req_9x8h2m`     |
+| Webhook secret   | `whsec_` | `whsec_live_...` |
+
+`txn_` is retired and never appears in the API.
+
+## Field casing
+
+JSON fields are snake_case as shown on the wire. Multi-word URL path segments are
+kebab-case, such as `webhook-endpoints`. Payment method values have no
+underscores: `telebirr`, not `tele_birr`.
+
+## Next
+
+<Cards>
+  <Card title="Money rules" href="/docs/quickstart">
+    See amounts in a request and response.
+  </Card>
+  <Card title="Payments" href="/docs/concepts/payments">
+    How a captured amount moves through the lifecycle.
+  </Card>
+  <Card title="API reference" href="/docs/api-reference">
+    Check field types in the generated reference.
+  </Card>
+</Cards>

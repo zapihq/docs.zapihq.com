@@ -1,0 +1,65 @@
+---
+title: Payouts
+description: How a Zapi payout moves money from your balance to an onboarded recipient.
+---
+
+A payout is money a merchant sends out of its Zapi balance to a recipient,
+tracked through its own lifecycle. It is the only money-out object in the API.
+There is no `transfers` resource, path, event, or alias.
+
+A recipient is a party you pay out to — a seller, creator, vendor, or the
+merchant itself. Onboard each recipient once in the dashboard. The public API
+references recipients by their `rcp_...` identifier and does not create or
+modify them.
+
+## The lifecycle
+
+```text
+pending ──▶ processing ──▶ succeeded
+   │            │
+   │            ├──▶ failed
+   └──cancel──▶ cancelled
+```
+
+`pending` means the payout is queued and can still be cancelled. `processing`
+means the provider is moving the money; the cancellation window has closed.
+`succeeded`, `failed`, and `cancelled` are final.
+
+A failed payout carries a `failure_code`: `insufficient_balance`,
+`invalid_destination`, `provider_declined`, or `provider_unavailable`.
+
+## Balance and recipients
+
+A payout debits your Zapi balance. If the balance does not cover the amount, the
+payout fails with `insufficient_balance`. Before you send, confirm the recipient
+is `active`; an `inactive` recipient cannot receive money.
+
+The API exposes no balance endpoint and no recipient endpoints. Use the
+dashboard for both, and the API for moving money.
+
+## Destination
+
+`destination` is always a saved `rcp_...` recipient, never a raw bank account or
+wallet number. That keeps account data in the dashboard, where it was onboarded
+and verified, instead of in every payout request.
+
+## Failure is not cancellation
+
+A failed payout reached the provider and was refused. A cancelled payout stopped
+before the provider picked it up. Both end the payout, but they mean different
+things for reconciliation: do not mark a recipient as paid in either case, and
+keep the failure code.
+
+## Next
+
+<Cards>
+  <Card title="Send a payout" href="/docs/guides/send-a-payout">
+    Create, track, and cancel a payout.
+  </Card>
+  <Card title="Payouts reference" href="/docs/api-reference/payouts">
+    Check every field and response.
+  </Card>
+  <Card title="Settlement" href="/docs/concepts/settlement">
+    How funds become your available balance.
+  </Card>
+</Cards>

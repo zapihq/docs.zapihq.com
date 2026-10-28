@@ -1,0 +1,101 @@
+---
+title: Handle errors
+description: Read the Zapi error envelope, branch on stable codes, and decide what to retry.
+---
+
+Every API error uses one envelope:
+
+```json
+{
+  "error": {
+    "type": "conflict_error",
+    "code": "payment_not_cancellable",
+    "message": "The payment has already succeeded and cannot be cancelled.",
+    "param": null
+  }
+}
+```
+
+`type` is the error family. `code` is the stable value to branch on. `message`
+is for humans and may change. `param` names the request field at fault, as a dot
+path such as `metadata.order_id`, or is `null`.
+
+## Read the status with the code
+
+| Status | Type                    | Meaning                                                        | Retry?                                            |
+| ------ | ----------------------- | -------------------------------------------------------------- | ------------------------------------------------- |
+| `400`  | `invalid_request_error` | The request is malformed or a field is invalid.                | No. Fix the request.                              |
+| `401`  | `authentication_error`  | The key is missing, invalid, or revoked.                       | No. Fix the key.                                  |
+| `403`  | `permission_error`      | The key cannot perform this request.                           | No. Fix the key or mode.                          |
+| `404`  | `invalid_request_error` | The object does not exist.                                     | No. Check the identifier and mode.                |
+| `409`  | `conflict_error`        | The object's state does not allow the request.                 | No. Re-read the object.                           |
+| `409`  | `idempotency_error`     | The key was reused with a different body, or is still running. | Maybe. Reuse or replace the key as the code says. |
+| `429`  | `rate_limit_error`      | Too many requests.                                             | Yes, after `Retry-After`.                         |
+| `500`  | `api_error`             | Zapi could not complete the request.                           | Yes, with backoff.                                |
+| `503`  | `api_error`             | The provider is unavailable.                                   | Yes, later.                                       |
+
+`503` with `provider_unavailable` appears on payout creation.
+
+## Branch on the code
+
+The codes you are most likely to handle:
+
+| Code                              | What it means                                             |
+| --------------------------------- | --------------------------------------------------------- |
+| `parameter_missing`               | A required field or header is absent.                     |
+| `parameter_invalid`               | A field has the wrong shape or value.                     |
+| `parameter_unknown`               | The body contains a field the endpoint does not accept.   |
+| `amount_invalid`                  | The amount is not a positive integer in santim.           |
+| `currency_unsupported`            | The currency is not `ETB`.                                |
+| `payment_method_unsupported`      | The payment method is not supported.                      |
+| `metadata_invalid`                | Metadata has too many pairs or an over-long key or value. |
+| `pagination_invalid`              | A cursor or limit is invalid.                             |
+| `resource_missing`                | No object exists with that identifier.                    |
+| `api_key_missing`                 | No bearer token was sent.                                 |
+| `api_key_invalid`                 | The bearer token is not a Zapi key.                       |
+| `api_key_revoked`                 | The key has been revoked.                                 |
+| `livemode_mismatch`               | The key and the object are in different modes.            |
+| `key_not_authorized`              | The key is not allowed to perform this request.           |
+| `payment_not_confirmable`         | The payment cannot be confirmed in its current state.     |
+| `payment_not_cancellable`         | The payment has already succeeded.                        |
+| `refund_not_allowed`              | The payment is not refundable.                            |
+| `refund_amount_exceeds_remaining` | The refund is larger than the unrefunded balance.         |
+| `payout_not_cancellable`          | The payout has reached the provider.                      |
+| `recipient_inactive`              | The payout recipient is not active.                       |
+| `idempotency_key_reuse`           | The key was used with a different body.                   |
+| `idempotency_key_in_progress`     | The original request is still running.                    |
+| `rate_limit_exceeded`             | The request rate is too high.                             |
+| `internal_error`                  | An unexpected failure on Zapi's side.                     |
+| `provider_unavailable`            | The destination provider is temporarily down.             |
+
+The payments and payouts specs each define their own closed list. A code that is
+not in the list is not part of the contract.
+
+## Retry rules
+
+- `429`: wait for the number of seconds in `Retry-After`, then retry.
+- `500`: retry with exponential backoff and jitter, up to a bounded number of
+  attempts. Reuse the same `Idempotency-Key` on every attempt.
+- `503`: retry later. A provider outage can outlast a short backoff, so surface
+  the delay to your operator.
+- `409`: do not retry blindly. Retrieve the object and decide from its current
+  state. The exception is `idempotency_key_in_progress`, where the same request
+  can be retried after a delay.
+- `400`, `401`, `403`, `404`: retrying the same request cannot succeed.
+
+Log the `Zapi-Request-Id` response header with every failure. It is the fastest
+way for support to trace a request.
+
+## Next
+
+<Cards>
+  <Card title="Errors reference" href="/docs/api-reference/errors">
+    The complete error type and code list.
+  </Card>
+  <Card title="Handle idempotency" href="/docs/guides/handle-idempotency">
+    Make retries safe.
+  </Card>
+  <Card title="Go-live checklist" href="/docs/guides/go-live">
+    Confirm failure handling before launch.
+  </Card>
+</Cards>

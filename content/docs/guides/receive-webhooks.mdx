@@ -1,0 +1,164 @@
+---
+title: Receive webhooks
+description: Register a webhook endpoint, verify deliveries, and handle each Zapi event exactly once.
+---
+
+Zapi sends an event to your webhook endpoint when a payment, refund, or payout
+changes state. Deliveries are at least once, so a handler must be able to see
+the same event twice and still act once.
+
+The API base URL is `https://api.zapihq.com/v1`.
+
+## Register an endpoint
+
+`url` must be HTTPS. `enabled_events` defaults to `["*"]`, which subscribes to
+every event. List specific events if you want a narrower subscription.
+
+```bash
+curl https://api.zapihq.com/v1/webhook-endpoints \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_3m7q1v" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/webhooks/zapi",
+    "enabled_events": [
+      "payment.success",
+      "payment.failed",
+      "payment.cancelled",
+      "refund.success",
+      "refund.failed"
+    ],
+    "description": "Production endpoint"
+  }'
+```
+
+The response includes a signing secret starting with `whsec_`. Store it
+securely: it is returned only when the endpoint is created or its secret is
+rotated.
+
+## The event envelope
+
+Every event has the same shape. `type` is the event name, and `data.object` is
+the payment, refund, or payout that changed.
+
+```json
+{
+  "id": "evt_3k8m1p",
+  "object": "event",
+  "type": "payment.success",
+  "created": "2026-10-27T13:05:00Z",
+  "livemode": true,
+  "data": {
+    "object": {
+      "id": "pay_9f2c1a",
+      "object": "payment",
+      "amount": 100000,
+      "currency": "ETB",
+      "status": "succeeded",
+      "payment_method": "telebirr",
+      "reference": "order_1042",
+      "description": "Order 1042",
+      "metadata": {},
+      "checkout_url": null,
+      "expires_at": "2026-10-27T13:30:00Z",
+      "failure_code": null,
+      "failure_message": null,
+      "created": "2026-10-27T13:00:00Z",
+      "livemode": true
+    }
+  }
+}
+```
+
+The ten event names are fixed:
+
+| Resource | Events                                                                         |
+| -------- | ------------------------------------------------------------------------------ |
+| Payment  | `payment.processing`, `payment.success`, `payment.failed`, `payment.cancelled` |
+| Refund   | `refund.success`, `refund.failed`                                              |
+| Payout   | `payout.processing`, `payout.success`, `payout.failed`, `payout.cancelled`     |
+
+Do not expect other names. A subscription to `"*"` receives all ten.
+
+## Verify before you parse
+
+1. Read the raw request body as bytes. Do not parse it as JSON first; parsing and
+   re-serialising changes the bytes.
+2. Read the `Zapi-Signature` header and the timestamp covered by the signature.
+3. Compute the HMAC of the timestamp and raw body with the endpoint's `whsec_`
+   secret.
+4. Compare the result to the header in constant time.
+5. Reject the delivery if the signature does not match. Return `2xx` only after
+   the signature and the event are accepted.
+
+The contract fixes the HMAC over the timestamp and raw body; it does not make
+the JSON body trustworthy on its own. Never act on an unverified delivery.
+
+## Respond, then work
+
+Return a `2xx` response as soon as the event is accepted. Do slow work — order
+fulfilment, ledger writes, downstream calls — after the response, or in a queue.
+
+A non-`2xx` response counts as a failed delivery. Zapi makes three delivery
+attempts per event. A retry carries the same `evt_...` identifier, so
+deduplicate on it:
+
+```ts
+async function handleEvent(event: {
+  id: string;
+  type: string;
+  data: { object: any };
+}) {
+  const seen = await db.seenEvents.has(event.id);
+  if (seen) return;
+
+  await db.transaction(async (tx) => {
+    await tx.seenEvents.insert(event.id);
+    // Apply the state change for event.type here.
+  });
+}
+```
+
+The event tells you what changed, not the whole current state. If you need
+certainty — or a delivery never arrives — retrieve the object by its identifier:
+
+```bash
+curl https://api.zapihq.com/v1/payments/pay_9f2c1a \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+Events can arrive out of order. Apply a state change only when it moves the
+object forward; for example, do not turn a `succeeded` payment back into
+`processing` because an older event arrived late.
+
+## Manage the endpoint
+
+- `GET /v1/webhook-endpoints/whe_...` retrieves the endpoint. The secret is not
+  returned.
+- `PATCH /v1/webhook-endpoints/whe_...` changes the URL, events, description, or
+  status. Set `"status": "disabled"` to stop deliveries without deleting the
+  endpoint.
+- `DELETE /v1/webhook-endpoints/whe_...` deletes the endpoint. It stops receiving
+  events immediately and returns `204`.
+- `POST /v1/webhook-endpoints/whe_.../rotate-secret` issues a new secret. The
+  previous secret keeps verifying deliveries for 24 hours, so you can deploy the
+  new one without dropping events.
+
+Refiring an event is a dashboard action. There is no public refire endpoint.
+
+## Next
+
+<Cards>
+  <Card title="Concepts: webhooks" href="/docs/concepts/webhooks">
+    How events, endpoints, and delivery fit together.
+  </Card>
+  <Card
+    title="Webhook endpoints reference"
+    href="/docs/api-reference/webhook-endpoints"
+  >
+    Check every request and response field.
+  </Card>
+  <Card title="Handle idempotency" href="/docs/guides/handle-idempotency">
+    Make the request that follows an event safe.
+  </Card>
+</Cards>

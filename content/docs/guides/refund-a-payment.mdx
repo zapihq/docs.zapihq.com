@@ -1,0 +1,121 @@
+---
+title: Refund a payment
+description: Return all or part of a succeeded payment, including repeat partial refunds and failure handling.
+---
+
+A refund returns money to a payer after a payment succeeds. You can refund part
+of the amount or the full remaining balance, and you can refund the same payment
+more than once. The sum of refunds cannot exceed the captured amount.
+
+Refund only a `succeeded` payment. A payment that is still `processing` has not
+captured funds yet.
+
+The API base URL is `https://api.zapihq.com/v1`.
+
+## Refund part of a payment
+
+`amount` is an integer in santim: `25000` is 250.00 ETB. Omit `amount` to refund
+the remaining balance.
+
+```bash
+curl https://api.zapihq.com/v1/payments/pay_9f2c1a/refunds \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_8j4d2r" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 25000,
+    "reason": "requested_by_payer",
+    "description": "Damaged item returned"
+  }'
+```
+
+`reason` is one of `duplicate`, `fraudulent`, `requested_by_payer`, or `other`.
+`description` and `metadata` are for your own records.
+
+The refund starts `pending` while the provider processes it:
+
+```json
+{
+  "id": "refnd_4k1q7c",
+  "object": "refund",
+  "payment": "pay_9f2c1a",
+  "amount": 25000,
+  "currency": "ETB",
+  "status": "pending",
+  "reason": "requested_by_payer",
+  "description": "Damaged item returned",
+  "metadata": {},
+  "failure_code": null,
+  "created": "2026-10-27T13:10:00Z",
+  "livemode": true
+}
+```
+
+## Refund the remaining balance
+
+Send no body to refund whatever is left:
+
+```bash
+curl -X POST https://api.zapihq.com/v1/payments/pay_9f2c1a/refunds \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_6b1x8k"
+```
+
+If you have already refunded part of the payment, this refunds the rest. If
+nothing is left, the request returns `409` with
+`refund_amount_exceeds_remaining`.
+
+## Follow the status
+
+| Status      | Meaning                                    |
+| ----------- | ------------------------------------------ |
+| `pending`   | The provider is processing the refund.     |
+| `succeeded` | Final. The money was returned.             |
+| `failed`    | Final. Read `failure_code` for the reason. |
+
+Refund failure codes are `provider_declined`, `insufficient_balance`, and
+`provider_unavailable`. A failed refund does not change the original payment.
+
+Wait for `refund.success` or `refund.failed`, then retrieve the refund to
+confirm the final state:
+
+```bash
+curl https://api.zapihq.com/v1/refunds/refnd_4k1q7c \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+List refunds newest first, filtered by `status` or by the `pay_...` payment:
+
+```bash
+curl "https://api.zapihq.com/v1/refunds?payment=pay_9f2c1a" \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+## Errors
+
+| Status | Code                              | What to do                                           |
+| ------ | --------------------------------- | ---------------------------------------------------- |
+| `400`  | `amount_invalid`                  | Send a positive integer in santim.                   |
+| `400`  | `parameter_invalid`               | Check the reason and field lengths.                  |
+| `404`  | `resource_missing`                | The payment does not exist in this mode.             |
+| `409`  | `refund_not_allowed`              | The payment has not succeeded or cannot be refunded. |
+| `409`  | `refund_amount_exceeds_remaining` | Refund no more than the remaining balance.           |
+| `409`  | `idempotency_key_reuse`           | Use a new key for a different refund request.        |
+| `429`  | `rate_limit_exceeded`             | Wait for `Retry-After`, then retry.                  |
+| `500`  | `internal_error`                  | Retry with backoff and the same idempotency key.     |
+
+Every error uses the envelope described in [Errors](/docs/api-reference/errors).
+
+## Next
+
+<Cards>
+  <Card title="Handle idempotency" href="/docs/guides/handle-idempotency">
+    Make a retried refund safe.
+  </Card>
+  <Card title="Receive webhooks" href="/docs/guides/receive-webhooks">
+    React to refund.success and refund.failed.
+  </Card>
+  <Card title="Refunds reference" href="/docs/api-reference/refunds">
+    Check every field and response.
+  </Card>
+</Cards>

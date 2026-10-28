@@ -1,0 +1,64 @@
+---
+title: Cards
+description: Accept card payments on Zapi's hosted checkout without handling card data.
+---
+
+Card is a payment method for collecting money. Use `"payment_method": "card"`.
+Card details are collected on Zapi's hosted checkout, not in your request.
+
+Cards cannot receive payouts. A payout destination is a bank account or a
+telebirr wallet.
+
+## Collect a payment
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "card",
+    "reference": "order_1042"
+  }'
+```
+
+The request carries no card number, expiry, or security code. The payer enters
+them on the hosted checkout at `checkout_url`. That boundary keeps your servers
+out of card-data scope.
+
+There is no publishable key and no client-side card tokenisation step in the
+current contract. Create the payment on your server and redirect the payer.
+
+## Refunds
+
+A succeeded card payment can be refunded in full or in part. The refund starts
+`pending` and ends `succeeded` or `failed`. A failed refund leaves the original
+payment intact.
+
+## Failure codes
+
+Payment failures use `insufficient_funds`, `payer_cancelled`, `timed_out`,
+`provider_declined`, `invalid_account`, and `provider_unavailable`. For a card,
+`provider_declined` usually means the issuer refused the payment, and
+`invalid_account` means the card details could not be used.
+
+## Fees and timing
+
+Fees and settlement times are not published in these docs until a verified source
+backs them. Do not infer them from test-mode behavior.
+
+## Next
+
+<Cards>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Build the full payment flow.
+  </Card>
+  <Card title="Refund a payment" href="/docs/guides/refund-a-payment">
+    Return all or part of a card payment.
+  </Card>
+  <Card title="Payment methods" href="/docs/payment-methods">
+    Compare cards with wallets and bank accounts.
+  </Card>
+</Cards>

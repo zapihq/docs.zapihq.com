@@ -1,0 +1,97 @@
+---
+title: Quickstart
+description: Create your first test payment, send the payer to checkout, and confirm the result.
+---
+
+This quickstart creates a payment in test mode, sends the payer to the hosted
+checkout, and waits for the `payment.success` event. The whole flow takes one
+request and one webhook handler.
+
+## 1. Get a test key
+
+Create a test key in the dashboard. Test keys start with `sk_test_` and touch
+only test data. Send the key as a bearer token.
+
+The API base URL is `https://api.zapihq.com/v1`. Every path below is relative to
+it.
+
+## 2. Create a payment
+
+Send an amount in integer santim. `100000` is 1,000.00 ETB. `currency` is
+uppercase `ETB`. The `Idempotency-Key` header is required on every `POST`, and
+`req_` is the convention for its value.
+
+```bash
+curl https://api.zapihq.com/v1/payments \
+  -H "Authorization: Bearer sk_test_..." \
+  -H "Idempotency-Key: req_9x8h2m" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "ETB",
+    "payment_method": "telebirr",
+    "reference": "order_1042",
+    "description": "Order 1042"
+  }'
+```
+
+The payment comes back `processing` with a `checkout_url`. The request never
+carries payer details: the phone number, bank account, or card is collected on
+the hosted page.
+
+```json
+{
+  "id": "pay_9f2c1a",
+  "object": "payment",
+  "amount": 100000,
+  "currency": "ETB",
+  "status": "processing",
+  "payment_method": "telebirr",
+  "reference": "order_1042",
+  "description": "Order 1042",
+  "metadata": {},
+  "checkout_url": "https://pay.zapihq.com/pay_9f2c1a",
+  "expires_at": "2026-10-27T13:30:00Z",
+  "failure_code": null,
+  "failure_message": null,
+  "created": "2026-10-27T13:00:00Z",
+  "livemode": false
+}
+```
+
+## 3. Send the payer to checkout
+
+Send the payer to `checkout_url`. They choose how to pay on that page. When they
+finish, Zapi sends an event to your webhook endpoint and the payment status
+changes.
+
+If the payer does not act before `expires_at`, the checkout stops accepting
+them and the payment ends `failed` with failure code `timed_out`.
+
+## 4. Confirm the result
+
+Register a webhook endpoint, then check the payment when `payment.success`
+arrives:
+
+```bash
+curl https://api.zapihq.com/v1/payments/pay_9f2c1a \
+  -H "Authorization: Bearer sk_test_..."
+```
+
+Retrieve the payment rather than trusting the event body alone. Events are
+delivered at least once, so use the `evt_` identifier to drop duplicate
+deliveries. See [Receive webhooks](/docs/guides/receive-webhooks).
+
+## Next
+
+<Cards>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Add confirmation, cancellation, and failure handling.
+  </Card>
+  <Card title="Test mode" href="/docs/guides/test-mode">
+    Exercise each outcome before you go live.
+  </Card>
+  <Card title="API reference" href="/docs/api-reference">
+    Check every field and response.
+  </Card>
+</Cards>

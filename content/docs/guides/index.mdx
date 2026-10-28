@@ -1,10 +1,47 @@
 ---
 title: Guides
-description: Task-focused guides for building on Zapi.
+description: Task-focused guides for accepting payments, sending payouts, and going live on Zapi.
 ---
 
-Guides walk through one job at a time: accepting a payment, sending a payout,
-receiving webhooks, and going live. Each guide assumes you have an API key and a
-server that can receive a webhook.
+Guides walk through one job at a time. After the
+[Quickstart](/docs/quickstart), the Integrate guides take you from a test key to
+a payment your server can trust. Then add the tasks your integration needs.
 
-Start with accepting a payment, then add the pieces your integration needs.
+Each guide assumes you can make an HTTPS request and receive a webhook.
+
+## Integrate
+
+<Cards>
+  <Card title="API keys" href="/docs/guides/api-keys">
+    Create, store, and rotate live and test keys.
+  </Card>
+  <Card title="Test mode" href="/docs/guides/test-mode">
+    Exercise successful and failed payments without moving money.
+  </Card>
+  <Card title="Go-live checklist" href="/docs/guides/go-live">
+    Check the integration before you switch to a live key.
+  </Card>
+</Cards>
+
+## Tasks
+
+<Cards>
+  <Card title="Accept a payment" href="/docs/guides/accept-a-payment">
+    Start a payment, send the payer to checkout, and wait for the result.
+  </Card>
+  <Card title="Send a payout" href="/docs/guides/send-a-payout">
+    Pay an onboarded recipient from your Zapi balance.
+  </Card>
+  <Card title="Refund a payment" href="/docs/guides/refund-a-payment">
+    Return all or part of a succeeded payment.
+  </Card>
+  <Card title="Receive webhooks" href="/docs/guides/receive-webhooks">
+    Register an endpoint, verify deliveries, and handle every event once.
+  </Card>
+  <Card title="Handle idempotency" href="/docs/guides/handle-idempotency">
+    Make a retried request safe and effective once.
+  </Card>
+  <Card title="Handle errors" href="/docs/guides/errors">
+    Read the error envelope and decide what to retry.
+  </Card>
+</Cards>
