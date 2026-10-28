@@ -4,6 +4,14 @@ import { changelogSource, source } from "@/lib/source";
 
 export const revalidate = false;
 
+// The Introduction pages are entry points, so they outrank ordinary reference
+// pages in the sitemap.
+const introductionPriority: Record<string, number> = {
+  "/docs/quickstart": 0.9,
+  "/docs/what-is-zapi": 0.9,
+  "/docs/comparisons": 0.9,
+};
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const basePages: MetadataRoute.Sitemap = [
     {
@@ -21,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         ? new Date(page.data.lastModified)
         : new Date(),
     changeFrequency: "weekly",
-    priority: 0.7,
+    priority: introductionPriority[page.url] ?? 0.7,
   }));
 
   const changelogPages: MetadataRoute.Sitemap = changelogSource
