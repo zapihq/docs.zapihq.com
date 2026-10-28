@@ -59,12 +59,12 @@ export function baseOptions(): BaseLayoutProps {
         <div className="flex items-center gap-2">
           <Image
             src="/logo.svg"
-            alt={appName}
+            alt=""
             width={30}
             height={20}
             className="h-6 rounded-full w-auto"
           />
-          <span>Zapi</span>
+          <span>{appName}</span>
         </div>
       ),
     },
