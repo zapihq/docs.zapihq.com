@@ -21,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         ? new Date(page.data.lastModified)
         : new Date(),
     changeFrequency: "weekly",
-    priority: 0.7,
+    priority: page.type !== "openapi" ? (page.data.priority ?? 0.7) : 0.7,
   }));
 
   const changelogPages: MetadataRoute.Sitemap = changelogSource

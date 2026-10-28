@@ -1,6 +1,7 @@
 {
   "title": "API reference",
   "description": "The REST API for payments and payouts, generated from the OpenAPI contract.",
+  "icon": "Braces",
   "pages": [
     "authentication",
     "idempotency",
