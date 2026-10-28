@@ -1,6 +1,7 @@
 {
   "title": "Guides",
   "description": "Task-focused guides for accepting payments, sending payouts, and going live on Zapi.",
+  "icon": "BookOpen",
   "pages": [
     "api-keys",
     "test-mode",

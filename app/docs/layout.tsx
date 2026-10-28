@@ -12,11 +12,7 @@ import { buttonVariants } from "fumadocs-ui/components/ui/button";
 
 export default function Layout({ children }: LayoutProps<"/docs">) {
   return (
-    <DocsLayout
-      tree={getDocsPageTree()}
-      {...baseOptions()}
-      links={[{ text: "Changelog", url: "/changelog" }]}
-    >
+    <DocsLayout tree={getDocsPageTree()} {...baseOptions()} links={[]}>
       <AISearch>
         <AISearchPanel />
         <AISearchTrigger
