@@ -12,6 +12,8 @@ it in your secret manager, not in source control or a client bundle.
 
 ## Send the key
 
+Send the key as a bearer token on every request:
+
 ```bash
 curl https://api.zapihq.com/v1/payments \
   -H "Authorization: Bearer sk_test_..." \

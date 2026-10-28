@@ -100,24 +100,9 @@ Return a `2xx` response as soon as the event is accepted. Do slow work — order
 fulfilment, ledger writes, downstream calls — after the response, or in a queue.
 
 A non-`2xx` response counts as a failed delivery. Zapi makes three delivery
-attempts per event. A retry carries the same `evt_...` identifier, so
-deduplicate on it:
-
-```ts
-async function handleEvent(event: {
-  id: string;
-  type: string;
-  data: { object: any };
-}) {
-  const seen = await db.seenEvents.has(event.id);
-  if (seen) return;
-
-  await db.transaction(async (tx) => {
-    await tx.seenEvents.insert(event.id);
-    // Apply the state change for event.type here.
-  });
-}
-```
+attempts per event. A retry carries the same `evt_...` identifier: check your
+store for that id, and if it is new, record it and apply the state change in the
+same transaction.
 
 The event tells you what changed, not the whole current state. If you need
 certainty — or a delivery never arrives — retrieve the object by its identifier:

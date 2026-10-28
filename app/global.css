@@ -6,7 +6,7 @@
 /* Fumadocs styles search matches with the CSS Custom Highlight API. Lightning
    CSS, which Turbopack uses, cannot parse `::highlight(fd-search)` yet and warns
    on every build, so keep those two utilities out of the compiled stylesheet.
-   The highlight still renders with the browser's default styling. */
+   The rules live in the layout's style tag, so search matches keep their look. */
 @source not inline("[&_::highlight(fd-search)]:text-fd-primary");
 @source not inline("[&_::highlight(fd-search)]:underline");
 
