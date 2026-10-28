@@ -1,0 +1,39 @@
+---
+title: Comparisons
+description: How Zapi compares with Chapa, Santimpay, and Arifpay on publicly documented capabilities.
+icon: Scale
+---
+
+Zapi, Chapa, Santimpay, and Arifpay are payment gateways: each fronts several
+providers behind one API, so a merchant integrates once. A provider is the
+institution behind a payment method — a bank, or the operator of a wallet such
+as telebirr — and is not a payment gateway. This page compares gateways, not
+providers.
+
+Competitor facts come from each gateway's own public material. Every row records
+when it was checked; a cell that reads `not published` means that material does
+not state the fact, not that the capability is absent. The Zapi column comes
+from this documentation and the OpenAPI contract in this repository.
+
+| Capability              | Zapi                                                                                                                    | Chapa                                                                                                              | Santimpay                                                                                                                             | Arifpay                                                                                                                      | Checked     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Payment methods covered | telebirr wallet; Commercial Bank of Ethiopia (CBE), Awash Bank, Bank of Abyssinia (BOA), and Dashen Bank accounts; card | Cards, mobile money, and bank transfers; telebirr is the only rail named in the v2 examples                        | Wallet and bank channels; Telebirr, CBE Birr, and M-Pesa are named in the docs                                                        | Banks, mobile wallets, and international platforms; Telebirr, CBE, M-Pesa, BOA, and Awash Birr are named among the C2B rails | 28 Oct 2026 |
+| Cards                   | Yes, on the hosted checkout; card brands are not specified                                                              | Yes, documented and testable; card brands are not named                                                            | Visa and Mastercard are listed in an "International Cards" section on the site; the docs do not cover card brands or a card test flow | Visa and Mastercard pages exist, but both say the integration may not be available on the current production gateway         | 28 Oct 2026 |
+| Payouts                 | Yes; to a bank account or telebirr wallet, cancelable while pending                                                     | Yes; Chapa balance to bank accounts or mobile money wallets, with bulk and B2B variants                            | Yes; B2C to Telebirr, CBE Birr, M-Pesa, and bank accounts from the merchant escrow or deposit balance                                 | Yes; B2C to Telebirr, CBE, and M-Pesa, plus wallet-to-bank                                                                   | 28 Oct 2026 |
+| Virtual accounts        | Described in Concepts; no public endpoint in the contract                                                               | Yes; system-generated accounts to receive funds and hold balances                                                  | not published                                                                                                                         | not published                                                                                                                | 28 Oct 2026 |
+| Events                  | Ten payment, refund, and payout event names; at least once, with three attempts per event                               | Webhooks for payment, payout, and refund state changes; retries after a non-200 response or timeout are documented | A signed webhook is POSTed to the merchant; retry behavior is not documented                                                          | POSTed to the merchant's `notifyUrl`; no automatic retry                                                                     | 28 Oct 2026 |
+| Idempotency             | `Idempotency-Key` required on every `POST`; retained 24 hours; a replay returns the original response                   | `Idempotency-Key` required on payment, payout, and refund creation                                                 | not published                                                                                                                         | No `Idempotency-Key`; a unique merchant `nonce` per request, and reusing one returns "session already exist"                 | 28 Oct 2026 |
+| Test mode               | Yes; `sk_test_` keys, `livemode: false`, outcomes chosen on the hosted checkout                                         | Yes; separate test and live keys and a simulated checkout                                                          | Yes; separate testing and production URLs documented during onboarding                                                                | Yes; an in-browser sandbox on a separate sandbox host                                                                        | 28 Oct 2026 |
+| Public documentation    | [docs.zapihq.com](https://docs.zapihq.com/)                                                                             | [docs.chapa.global](https://docs.chapa.global/docs/v2)                                                             | [docs.servicespayment.net](https://docs.servicespayment.net/)                                                                         | [developer.arifpay.net](https://developer.arifpay.net/)                                                                      | 28 Oct 2026 |
+| Pricing                 | [Pricing](https://zapihq.com/pricing)                                                                                   | [Pricing](https://chapa.co/pricing)                                                                                | not published                                                                                                                         | [Pricing](https://arifpay.net/Pricing)                                                                                       | 28 Oct 2026 |
+
+## What the table does not cover
+
+The rows describe capabilities that each gateway publishes, not commercial
+terms or performance. Fees and rates change, so the pricing row links to each
+gateway's own page instead of copying a number.
+
+The Zapi column lists what this repository's contract supports today; each
+competitor cell repeats only what that gateway's own material states. For the
+request shapes behind the Zapi column, start with the
+[Quickstart](/docs/quickstart) or read [Concepts](/docs/concepts).

@@ -1,0 +1,53 @@
+---
+title: What is Zapi
+description: A payment gateway that collects payments, pays out, and reports events for Ethiopian merchants.
+icon: Sparkles
+---
+
+Zapi is a payment gateway for Ethiopian merchants: one API in front of telebirr
+wallets, bank accounts, and cards. You create a payment, the payer confirms on
+Zapi's hosted checkout, and the captured funds settle to your merchant balance.
+
+A payment gateway is not a provider. A provider is the institution behind a
+payment method: a bank, or the operator of a wallet such as telebirr. Zapi
+fronts several of them so you integrate once.
+
+## What the gateway covers
+
+- **Payments.** Collect from telebirr, bank accounts, and cards. The bank
+  providers are Commercial Bank of Ethiopia (CBE), Awash Bank, Bank of
+  Abyssinia (BOA), and Dashen Bank. The create request names the method; the
+  payer supplies the phone number, bank account, or card on the hosted
+  checkout.
+- **Refunds.** Return all or part of a succeeded payment, more than once, up to
+  the captured amount.
+- **Payouts.** Send money from your Zapi balance to a recipient's bank account
+  or telebirr wallet. A recipient is onboarded once and referenced by a saved
+  `rcp_...` identifier.
+- **Virtual accounts.** The docs describe account identifiers that route
+  inbound funds to a single merchant. The public API does not expose an
+  endpoint for them; contact Zapi for the current onboarding process.
+- **Events.** Subscribe a webhook endpoint to the ten payment, refund, and
+  payout event names. Deliveries are at least once, with three attempts per
+  event.
+- **Idempotent retries.** Send an `Idempotency-Key` with every `POST`. A retry
+  with the same key, method, path, and body applies the change once and returns
+  the original response.
+- **Test mode.** Build with `sk_test_` keys and `livemode: false`, choose
+  simulated outcomes on the checkout, then switch to a live key.
+
+## How a payment moves
+
+A create request returns the payment in `processing` and a `checkout_url` when
+the payer must approve it. The payer acts on the hosted page, Zapi sends an
+event to your webhook endpoint, and you retrieve the payment to confirm its
+final state. Settlement turns a captured payment into balance that payouts draw
+on; settlement timing and fees are not published here.
+
+## Next
+
+- [Quickstart](/docs/quickstart) — create your first test payment.
+- [Concepts](/docs/concepts) — how payments, payouts, settlement, and events
+  fit together.
+- [Comparisons](/docs/comparisons) — how Zapi compares with Chapa, Santimpay,
+  and Arifpay on publicly documented capabilities.

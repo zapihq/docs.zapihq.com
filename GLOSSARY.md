@@ -32,10 +32,17 @@ card — named in the API by `payment_method`: `telebirr`, `cbe`, `awash`,
 `boa`, `dashen`, or `card`.
 _Avoid_: channel, rail, option
 
+**Payment gateway**:
+A company that fronts many providers behind a single API, so a merchant
+integrates once and accepts every payment method the gateway supports. Zapi is
+a payment gateway.
+_Avoid_: processor, aggregator, switch
+
 **Provider**:
 The institution that operates a payment method, such as telebirr or a bank.
-EthSwitch is an interbank switch, not a payment method.
-_Avoid_: operator, gateway, PSP
+EthSwitch is an interbank switch, not a payment method. A provider is not a
+payment gateway.
+_Avoid_: operator, PSP
 
 **Refund**:
 Money returned to a payer, in full or in part, after a payment succeeds.
