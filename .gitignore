@@ -24,6 +24,10 @@ yarn-error.log*
 .taste-skill/
 *.log
 
+# worktrees
+/.worktrees/
+/.claude/worktrees/
+
 # others
 .env*.local
 .vercel

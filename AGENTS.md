@@ -25,3 +25,5 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 ### Branch & PR workflow
 
 Never commit to `main`. All work happens in a worktree on a feature branch, ships as a PR via the `pr` skill, and lands via squash merge; "merge the PR" also syncs the attached issue's task list and purges branches/worktree. See `docs/agents/workflow.md`.
+
+Worktrees live inside the repo at `.worktrees/<branch-dashed>` and are created with `scripts/worktree.cmd` — see `docs/agents/worktrees.md`.
