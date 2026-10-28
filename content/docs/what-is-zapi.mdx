@@ -2,6 +2,7 @@
 title: What is Zapi
 description: A payment gateway that collects payments, pays out, and reports events for Ethiopian merchants.
 icon: Sparkles
+priority: 0.9
 ---
 
 Zapi is a payment gateway for Ethiopian merchants: one API in front of telebirr
@@ -9,8 +10,8 @@ wallets, bank accounts, and cards. You create a payment, the payer confirms on
 Zapi's hosted checkout, and the captured funds settle to your merchant balance.
 
 A payment gateway is not a provider. A provider is the institution behind a
-payment method: a bank, or the operator of a wallet such as telebirr. Zapi
-fronts several of them so you integrate once.
+payment method: a bank, or a wallet provider such as telebirr. Zapi fronts
+several of them so you integrate once.
 
 ## What the gateway covers
 
@@ -22,8 +23,8 @@ fronts several of them so you integrate once.
 - **Refunds.** Return all or part of a succeeded payment, more than once, up to
   the captured amount.
 - **Payouts.** Send money from your Zapi balance to a recipient's bank account
-  or telebirr wallet. A recipient is onboarded once and referenced by a saved
-  `rcp_...` identifier.
+  or telebirr wallet. Onboard a recipient once, then reference it by its saved
+  `rcp_4k1q7c` identifier.
 - **Virtual accounts.** The docs describe account identifiers that route
   inbound funds to a single merchant. The public API does not expose an
   endpoint for them; contact Zapi for the current onboarding process.

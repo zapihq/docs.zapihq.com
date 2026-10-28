@@ -8,8 +8,9 @@ const ring =
 const cards = [
   {
     title: "What is Zapi",
-    description: "What the gateway covers, and how a payment moves.",
-    hint: "payment_method",
+    description:
+      "Zapi is a payment gateway that collects payments, pays out, and reports events for Ethiopian merchants.",
+    hint: "rcp_4k1q7c",
     href: "/docs/what-is-zapi",
     wide: true,
   },
@@ -47,7 +48,7 @@ const cards = [
   {
     title: "Comparisons",
     description: "Zapi against Chapa, Santimpay, and Arifpay.",
-    hint: "not published",
+    hint: "Idempotency-Key",
     href: "/docs/comparisons",
   },
 ] as const;

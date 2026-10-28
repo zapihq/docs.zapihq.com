@@ -17,6 +17,8 @@ export const docs = defineDocs({
     // the social card, so a page without one is a broken page. See WRITING.md.
     schema: pageSchema.extend({
       description: z.string().min(1),
+      // Sitemap priority relative to other docs pages. Omit it for the default.
+      priority: z.number().optional(),
     }),
     postprocess: {
       includeProcessedMarkdown: true,
