@@ -15,6 +15,28 @@ yarn dev
 
 Open http://localhost:3000 with your browser to see the result.
 
+## Run the container
+
+The image runs the Next.js standalone server as the non-root `node` user on
+port 3000. Build it from the repository root; no Node install is needed on the
+host, only Docker.
+
+```bash
+docker build --build-arg NEXT_PUBLIC_SITE_URL=https://docs.zapihq.com -t zapi-docs .
+docker run --rm -p 3000:3000 zapi-docs
+```
+
+`NEXT_PUBLIC_SITE_URL` is a build argument because it is rendered into the
+output. `PORT` and `HOSTNAME` are runtime variables and default to `3000` and
+`0.0.0.0`.
+
+CI builds the image and exercises it on every pull request with
+`scripts/check-container.sh`. Run the same checks against a local image:
+
+```bash
+bash scripts/check-container.sh zapi-docs
+```
+
 ## Explore
 
 In the project, you can see:
