@@ -17,10 +17,10 @@ env:
   PNPM_VERSION: "11.17.0"
 
 jobs:
-  lint:
+  quality:
     name: Lint, Typecheck And Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
