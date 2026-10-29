@@ -22,9 +22,10 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM base AS builder
 WORKDIR /app
 
-# The fumadocs last-modified plugin always shells out to git. The build
-# context excludes .git, so git is here only so it can report "no history"
-# instead of the build failing with ENOENT.
+# node:22-bookworm-slim ships no git, and .dockerignore excludes .git. The
+# fumadocs last-modified plugin shells out to git unconditionally, so install
+# it in the builder only: with no repository it reports "no history" instead
+# of failing the build with ENOENT. The runtime image stays git-free.
 RUN apt-get update && \
     apt-get install --yes --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
