@@ -5,13 +5,8 @@
 # worktrees, and env files out of it while keeping content/ (MDX is a build
 # input).
 
-ARG NODE_VERSION=22
-ARG PNPM_VERSION=11.17.0
-
-FROM node:${NODE_VERSION}-bookworm-slim AS base
-# Redeclare the global argument to use it inside this stage.
-ARG PNPM_VERSION
-RUN npm install --global pnpm@${PNPM_VERSION}
+FROM node:22-bookworm-slim AS base
+RUN npm install --global pnpm@11.17.0
 ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
@@ -27,10 +22,19 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM base AS builder
 WORKDIR /app
 
+# The fumadocs last-modified plugin always shells out to git. The build
+# context excludes .git, so git is here only so it can report "no history"
+# instead of the build failing with ENOENT.
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
 # The public site URL is rendered into the output, so it is a build argument
 # rather than a runtime variable.
 ARG NEXT_PUBLIC_SITE_URL=""
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+RUN test -n "${NEXT_PUBLIC_SITE_URL}" || \
+    { echo "NEXT_PUBLIC_SITE_URL is required as a build argument" >&2; exit 1; }
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -38,7 +42,7 @@ COPY . .
 RUN pnpm exec fumadocs-mdx
 RUN pnpm build
 
-FROM node:${NODE_VERSION}-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

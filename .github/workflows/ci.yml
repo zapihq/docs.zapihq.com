@@ -18,7 +18,7 @@ env:
 
 jobs:
   quality:
-    name: Lint, Typecheck And Build
+    name: Lint, Typecheck, Build And Container
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

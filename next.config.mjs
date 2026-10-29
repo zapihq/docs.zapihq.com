@@ -3,10 +3,10 @@ import { createMDX } from "fumadocs-mdx/next";
 
 const withMDX = createMDX();
 
-// Pin the tracing root to this app. Without it Next infers a directory by
-// walking up for lockfiles, which nests .next/standalone inside a parent path
-// when the checkout lives in a worktree. The container expects server.js at
-// the root of the standalone output.
+// Pin the tracing root to this app so the standalone output always has
+// server.js at its root, including when the checkout lives in a worktree
+// (Next otherwise infers a parent directory from lockfiles). The container
+// copies that layout directly.
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 /** @type {import('next').NextConfig} */

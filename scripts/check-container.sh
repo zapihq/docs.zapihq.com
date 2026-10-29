@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exercise the built image from the outside: boot it, wait for the health
-# contract, and check the four behaviours the container seam guarantees.
+# contract, and check the container seam — health, the image healthcheck,
+# the non-root user, a rendered docs page, the docs index, and a 404.
 # Run locally with `bash scripts/check-container.sh <image> [port]`.
 set -euo pipefail
 
