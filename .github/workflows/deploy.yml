@@ -116,33 +116,46 @@ jobs:
           mode="$(stat -c '%a' .env)"
           [ "$mode" = "600" ] || fail "$DEPLOY_PATH/.env must be mode 600, found $mode"
 
+          # deploy_doc is not in the docker group: that is an implicit root
+          # grant. The narrow sudoers rule allows exactly this binary instead.
+          DOCKER=(sudo -n /usr/bin/docker)
+          "${DOCKER[@]}" version >/dev/null 2>&1 ||
+            fail "deploy user cannot run docker; add the NOPASSWD /usr/bin/docker rule"
+
+          # sudo resets the environment, so the compose variables live in a
+          # CI-owned file rather than being passed through the shell.
+          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$IMAGE_TAG" "$PORT" > .image.env
+          chmod 644 .image.env
+          COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
+
           # The registry credential is the run's short-lived token, and it is
           # removed even when a later stage fails.
           logout() {
-            docker logout ghcr.io >/dev/null 2>&1 || true
+            "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true
           }
           trap logout EXIT
 
           echo "Logging in to ghcr.io as $GHCR_USER"
           printf '%s' "$GHCR_TOKEN" |
-            docker login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null ||
+            "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null ||
             fail "registry login failed"
 
           echo "Pulling $IMAGE_REPOSITORY:$IMAGE_TAG"
-          if ! IMAGE_TAG="$IMAGE_TAG" docker compose pull; then
+          if ! "${COMPOSE[@]}" pull; then
             fail "pull failed; the running container is untouched"
           fi
 
-          previous_image="$(docker inspect --format '{{.Config.Image}}' zapi-docs 2>/dev/null || true)"
+          previous_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs 2>/dev/null || true)"
           previous_tag="${previous_image##*:}"
           echo "Previous tag: ${previous_tag:-none}"
 
           echo "Replacing the running container with $IMAGE_TAG"
-          if ! IMAGE_TAG="$IMAGE_TAG" docker compose up --detach --wait --wait-timeout 90; then
-            docker compose logs --tail 100 zapi-docs || true
+          if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
+            "${COMPOSE[@]}" logs --tail 100 zapi-docs || true
             if [ -n "$previous_tag" ] && [ "$previous_tag" != "$IMAGE_TAG" ]; then
               echo "New container is unhealthy; restoring $previous_tag"
-              IMAGE_TAG="$previous_tag" docker compose up --detach --wait --wait-timeout 90 || true
+              printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$PORT" > .image.env
+              "${COMPOSE[@]}" up --detach --wait --wait-timeout 90 || true
             fi
             fail "container did not become healthy; deploy failed"
           fi
@@ -157,7 +170,7 @@ jobs:
           [ "$body" = '{"status":"ok"}' ] || fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
 
           echo "Pruning images older than seven days"
-          docker image prune --all --force \
+          "${DOCKER[@]}" image prune --all --force \
             --filter "until=168h" \
             --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" >/dev/null || true
 

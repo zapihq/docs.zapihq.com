@@ -11,6 +11,9 @@ chmod 644 ~/.ssh/known_hosts
 
 SSH=(ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
 
+printf '\n===== root login with the deploy key =====\n'
+ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "root@$SSH_HOST" 'id' 2>&1 || true
+
 "${SSH[@]}" 'bash -s' <<'REMOTE'
 set -uo pipefail
 section() { printf '\n===== %s =====\n' "$1"; }
@@ -18,9 +21,6 @@ section() { printf '\n===== %s =====\n' "$1"; }
 section "identity"
 id
 groups
-
-section "root login with the deploy key"
-ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "root@$SSH_HOST" 'id' 2>&1 || true
 
 section "docker"
 docker --version || true
