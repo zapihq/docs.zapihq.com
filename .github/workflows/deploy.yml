@@ -15,9 +15,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NODE_VERSION: "22"
-  PNPM_VERSION: "11.17.0"
-  IMAGE_REPOSITORY: ghcr.io/zapihq/docs.zapihq.com
   SSH_OPTIONS: "-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/runner/.ssh/known_hosts"
 
 jobs:
@@ -49,6 +46,7 @@ jobs:
       packages: read
     env:
       IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
+      IMAGE_REPOSITORY: ${{ needs.publish.outputs.image }}
       IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       SSH_HOST: ${{ vars.SSH_HOST }}
@@ -98,11 +96,27 @@ jobs:
             -P "$SSH_PORT" \
             docker/compose.yml "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/compose.yml"
 
+      # The registry token is staged as a file so it never appears in a
+      # process list on the server. The remote script deletes it after login.
+      - name: Stage registry token
+        run: |
+          set -euo pipefail
+          trap 'rm -f /tmp/ghcr-token' EXIT
+          umask 077
+          printf '%s' "$GHCR_TOKEN" > /tmp/ghcr-token
+          scp -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -P "$SSH_PORT" \
+            /tmp/ghcr-token "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/.ghcr-token"
+          rm -f /tmp/ghcr-token
+
       - name: Pull, replace, verify, prune
         run: |
           ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" \
             "$SSH_USER@$SSH_HOST" \
-            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' GHCR_TOKEN='$GHCR_TOKEN' bash -s" <<'REMOTE'
+            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' bash -s" <<'REMOTE'
           set -Eeuo pipefail
 
           fail() {
@@ -111,11 +125,30 @@ jobs:
           }
 
           cd "$DEPLOY_PATH" || fail "missing deploy directory: $DEPLOY_PATH"
+
+          # deploy_doc is not in the docker group: that is an implicit root
+          # grant. The narrow sudoers rule allows exactly this binary instead.
+          DOCKER=(sudo -n /usr/bin/docker)
+
+          # The registry credential is the run's short-lived token, staged by
+          # the workflow as a file so it never reaches a process list. Remove it
+          # on every exit path, including failures before login.
+          TOKEN_FILE=.ghcr-token
+          logout() {
+            "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true
+            rm -f "$TOKEN_FILE"
+          }
+          trap logout EXIT
+
           [ -f compose.yml ] || fail "compose.yml was not synced"
           [ -f .env ] || fail "missing operator-owned env file: $DEPLOY_PATH/.env"
+          [ -f "$TOKEN_FILE" ] || fail "missing staged registry token"
 
           mode="$(stat -c '%a' .env)"
           [ "$mode" = "600" ] || fail "$DEPLOY_PATH/.env must be mode 600, found $mode"
+
+          "${DOCKER[@]}" version >/dev/null 2>&1 ||
+            fail "deploy user cannot run docker; add the NOPASSWD /usr/bin/docker rule"
 
           # Keep the values out of the compose interpolation environment: the
           # file is the single source, so a rollback cannot be overridden by a
@@ -124,29 +157,17 @@ jobs:
           HOST_PORT="$PORT"
           unset IMAGE_TAG PORT
 
-          # deploy_doc is not in the docker group: that is an implicit root
-          # grant. The narrow sudoers rule allows exactly this binary instead.
-          DOCKER=(sudo -n /usr/bin/docker)
-          "${DOCKER[@]}" version >/dev/null 2>&1 ||
-            fail "deploy user cannot run docker; add the NOPASSWD /usr/bin/docker rule"
-
           # sudo resets the environment, so the compose variables live in a
-          # CI-owned file rather than being passed through the shell.
+          # CI-owned interpolation file rather than being passed through the
+          # shell. It carries no secrets.
           printf 'IMAGE_TAG=%s\nPORT=%s\n' "$TAG" "$HOST_PORT" > .image.env
           chmod 644 .image.env
           COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
 
-          # The registry credential is the run's short-lived token, and it is
-          # removed even when a later stage fails.
-          logout() {
-            "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true
-          }
-          trap logout EXIT
-
           echo "Logging in to ghcr.io as $GHCR_USER"
-          printf '%s' "$GHCR_TOKEN" |
-            "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null ||
+          "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin < "$TOKEN_FILE" >/dev/null ||
             fail "registry login failed"
+          rm -f "$TOKEN_FILE"
 
           echo "Pulling $IMAGE_REPOSITORY:$TAG"
           if ! "${COMPOSE[@]}" pull; then
@@ -157,15 +178,25 @@ jobs:
           previous_tag="${previous_image##*:}"
           echo "Previous tag: ${previous_tag:-none}"
 
+          # Restore the tag that was running before this deploy. A failure here
+          # is reported separately, so a broken restore cannot hide behind the
+          # original health error.
+          restore_previous() {
+            if [ -z "$previous_tag" ] || [ "$previous_tag" = "$TAG" ]; then
+              return 1
+            fi
+            echo "Restoring $previous_tag"
+            printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$HOST_PORT" > .image.env
+            "${COMPOSE[@]}" up --detach --wait --wait-timeout 90
+          }
+
           echo "Replacing the running container with $TAG"
           if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
             "${COMPOSE[@]}" logs --tail 100 app || true
-            if [ -n "$previous_tag" ] && [ "$previous_tag" != "$TAG" ]; then
-              echo "New container is unhealthy; restoring $previous_tag"
-              printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$HOST_PORT" > .image.env
-              "${COMPOSE[@]}" up --detach --wait --wait-timeout 90 || true
+            if restore_previous; then
+              fail "new container unhealthy; restored $previous_tag"
             fi
-            fail "container did not become healthy; deploy failed"
+            fail "new container unhealthy; no previous container to restore"
           fi
 
           # Health is a contract, not a container-state detail: speak HTTP to it.
@@ -177,7 +208,12 @@ jobs:
             fi
             sleep 1
           done
-          [ "$body" = '{"status":"ok"}' ] || fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+          if [ "$body" != '{"status":"ok"}' ]; then
+            if restore_previous; then
+              fail "GET /api/health returned '${body}'; restored $previous_tag"
+            fi
+            fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+          fi
 
           echo "Pruning images older than seven days"
           "${DOCKER[@]}" image prune --all --force \

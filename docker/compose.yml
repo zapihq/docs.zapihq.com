@@ -2,7 +2,9 @@
 #
 # The deploy job copies this file to ${DEPLOY_PATH}/compose.yml on every run.
 # The env file beside it (.env) is operator-owned: CI never writes it, and it is
-# the only place the runtime secrets live on the server.
+# the only place the runtime secrets live on the server. CI also writes
+# .image.env beside this file with IMAGE_TAG and PORT for interpolation; it
+# carries no secrets.
 #
 # nginx stays on the host, terminating TLS and enforcing Basic Auth. The app is
 # published on loopback only, on the port nginx proxies to.
