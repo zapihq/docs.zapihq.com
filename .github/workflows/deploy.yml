@@ -18,7 +18,7 @@ env:
   NODE_VERSION: "22"
   PNPM_VERSION: "11.17.0"
   IMAGE_REPOSITORY: ghcr.io/zapihq/docs.zapihq.com
-  SSH_OPTIONS: "-i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts"
+  SSH_OPTIONS: "-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/runner/.ssh/known_hosts"
 
 jobs:
   ci:
@@ -90,7 +90,7 @@ jobs:
       - name: Sync compose file
         run: |
           set -euo pipefail
-          ssh $SSH_OPTIONS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
+          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
           scp -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
@@ -100,7 +100,7 @@ jobs:
 
       - name: Pull, replace, verify, prune
         run: |
-          ssh $SSH_OPTIONS -p "$SSH_PORT" \
+          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" \
             "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' GHCR_TOKEN='$GHCR_TOKEN' bash -s" <<'REMOTE'
           set -Eeuo pipefail
 
@@ -116,6 +116,13 @@ jobs:
           mode="$(stat -c '%a' .env)"
           [ "$mode" = "600" ] || fail "$DEPLOY_PATH/.env must be mode 600, found $mode"
 
+          # Keep the values out of the compose interpolation environment: the
+          # file is the single source, so a rollback cannot be overridden by a
+          # stale exported tag.
+          TAG="$IMAGE_TAG"
+          HOST_PORT="$PORT"
+          unset IMAGE_TAG PORT
+
           # deploy_doc is not in the docker group: that is an implicit root
           # grant. The narrow sudoers rule allows exactly this binary instead.
           DOCKER=(sudo -n /usr/bin/docker)
@@ -124,7 +131,7 @@ jobs:
 
           # sudo resets the environment, so the compose variables live in a
           # CI-owned file rather than being passed through the shell.
-          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$IMAGE_TAG" "$PORT" > .image.env
+          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$TAG" "$HOST_PORT" > .image.env
           chmod 644 .image.env
           COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
 
@@ -140,7 +147,7 @@ jobs:
             "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null ||
             fail "registry login failed"
 
-          echo "Pulling $IMAGE_REPOSITORY:$IMAGE_TAG"
+          echo "Pulling $IMAGE_REPOSITORY:$TAG"
           if ! "${COMPOSE[@]}" pull; then
             fail "pull failed; the running container is untouched"
           fi
@@ -149,12 +156,12 @@ jobs:
           previous_tag="${previous_image##*:}"
           echo "Previous tag: ${previous_tag:-none}"
 
-          echo "Replacing the running container with $IMAGE_TAG"
+          echo "Replacing the running container with $TAG"
           if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
-            "${COMPOSE[@]}" logs --tail 100 zapi-docs || true
-            if [ -n "$previous_tag" ] && [ "$previous_tag" != "$IMAGE_TAG" ]; then
+            "${COMPOSE[@]}" logs --tail 100 app || true
+            if [ -n "$previous_tag" ] && [ "$previous_tag" != "$TAG" ]; then
               echo "New container is unhealthy; restoring $previous_tag"
-              printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$PORT" > .image.env
+              printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$HOST_PORT" > .image.env
               "${COMPOSE[@]}" up --detach --wait --wait-timeout 90 || true
             fi
             fail "container did not become healthy; deploy failed"
@@ -163,8 +170,10 @@ jobs:
           # Health is a contract, not a container-state detail: speak HTTP to it.
           body=""
           for _ in $(seq 1 30); do
-            body="$(curl --silent --max-time 5 "http://127.0.0.1:${PORT}/api/health" || true)"
-            [ "$body" = '{"status":"ok"}' ] && break
+            body="$(curl --silent --max-time 5 "http://127.0.0.1:${HOST_PORT}/api/health" || true)"
+            if [ "$body" = '{"status":"ok"}' ]; then
+              break
+            fi
             sleep 1
           done
           [ "$body" = '{"status":"ok"}' ] || fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
@@ -174,5 +183,5 @@ jobs:
             --filter "until=168h" \
             --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" >/dev/null || true
 
-          echo "Live tag: $IMAGE_TAG"
+          echo "Live tag: $TAG"
           REMOTE
