@@ -25,8 +25,8 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 ### Deploying
 
 Production is a private GHCR image run by docker compose behind the host nginx;
-CI is the only deploy path. Deploy, rollback, first cutover, teardown, and
-failure triage live in `docs/agents/deploy.md`.
+CI is the only deploy path. Deploy, rollback, fresh host, and failure triage
+live in `docs/agents/deploy.md`.
 
 ### Branch & PR workflow
 
