@@ -73,125 +73,41 @@ jobs:
       - name: Verify container seam
         run: bash ./scripts/check-container.sh zapi-docs:ci
 
-  # Temporary one-off cutover (#34): seed the operator env file and bring the
-  # already-published image up on loopback. Removed before merge.
-  cutover:
-    name: Cut Over To Container
+  # Temporary: apply the cutover's GitHub configuration (#34).
+  configure:
+    name: Configure GitHub
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     environment: production
     permissions:
       contents: write
-      packages: read
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
 
-      - name: Prepare SSH credentials
+      - name: Update deploy variables
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_KEY_BOOTSTRAP }}
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-          scp -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -P "$SSH_PORT" \
-            docker/compose.yml "$SSH_USER@$SSH_HOST:/opt/zapi-docs/compose.yml"
-
-          ssh -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "OPENROUTER_API_KEY='$OPENROUTER_API_KEY' IMAGE_TAG='latest' PORT='3002' GHCR_USER='${{ github.actor }}' GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}' bash -s" <<'REMOTE'
-          set -Eeuo pipefail
-
-          cd /opt/zapi-docs
-          if [ ! -f .env ]; then
-            umask 077
-            printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" > .env
-            chmod 600 .env
-            echo "created operator .env"
-          else
-            echo "operator .env already exists; leaving it untouched"
-          fi
-          stat -c '%a %U:%G %n' .env
-          cut -d= -f1 .env
-
-          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$IMAGE_TAG" "$PORT" > .image.env
-          chmod 644 .image.env
-
-          DOCKER=(sudo -n /usr/bin/docker)
-          "${DOCKER[@]}" version >/dev/null
-          logout() { "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true; }
-          trap logout EXIT
-
-          printf '%s' "$GHCR_TOKEN" |
-            "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null
-
-          "${DOCKER[@]}" compose --env-file .image.env pull
-          "${DOCKER[@]}" compose --env-file .image.env up --detach --wait --wait-timeout 90
-
-          body=""
-          for _ in $(seq 1 30); do
-            body="$(curl --silent --max-time 5 "http://127.0.0.1:${PORT}/api/health" || true)"
-            if [ "$body" = '{"status":"ok"}' ]; then
-              break
-            fi
-            sleep 1
-          done
-          [ "$body" = '{"status":"ok"}' ] || {
-            "${DOCKER[@]}" compose --env-file .image.env logs --tail 100 app || true
-            echo "::error::health check failed: $body"
-            exit 1
-          }
-          echo "Live tag: $IMAGE_TAG"
-          REMOTE
-
-      - name: Publish status
-        if: always()
-        env:
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
+          repo="$GITHUB_REPOSITORY"
+          base="repos/${repo}/environments/production/variables"
+
+          gh api -X PATCH "${base}/DEPLOY_PATH" -f name=DEPLOY_PATH -f value=/opt/zapi-docs || true
+          gh api -X DELETE "${base}/SERVICE_NAME" || true
+          gh api -X DELETE "${base}/KEEP_RELEASES" || true
+          gh api -X DELETE "${base}/OPENROUTER_API_KEY" || true
+
           {
-            echo "container:"
-            ssh -i ~/.ssh/id_ed25519 \
-              -o BatchMode=yes -o ConnectTimeout=15 \
-              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-              'sudo -n /usr/bin/docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" 2>&1 || true' 2>&1 || true
-            echo "health:"
-            ssh -i ~/.ssh/id_ed25519 \
-              -o BatchMode=yes -o ConnectTimeout=15 \
-              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-              'curl -sS -m 5 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/api/health 2>&1 || true' 2>&1 || true
-            echo "healthcheck:"
-            ssh -i ~/.ssh/id_ed25519 \
-              -o BatchMode=yes -o ConnectTimeout=15 \
-              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-              'sudo -n /usr/bin/docker inspect --format "{{.State.Health.Status}}" zapi-docs 2>&1 || true' 2>&1 || true
-          } > ci-status.txt
+            echo "variables:"
+            gh api "${base}" --jq '.variables[].name' || true
+          } > vars-status.txt
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ci-status.txt
-          git commit -m "chore: cutover status [skip ci]" || exit 0
+          git add vars-status.txt
+          git commit -m "chore: variables status [skip ci]" || exit 0
           git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
