@@ -10,7 +10,7 @@ Question: Where does docs.zapihq.com get its API truth from, so every endpoint, 
 No OpenAPI spec, no backend repo, no SDK source, and no previously-written API docs
 exist for the public API. Everything currently written about the public API lives in
 the marketing site's "illustrative" snippets, which are explicitly labeled
-_Illustrative API flow_ / _Illustrative distribution_ (self-disclaiming, not spec-grade).
+*Illustrative API flow* / *Illustrative distribution* (self-disclaiming, not spec-grade).
 
 The only real, spec-grade artifact in the workspace is the **internal Staff IAM API**
 (OpenAPI 3.1.0, 2,068 lines) — admin identity/authorization, **not** the public
@@ -26,13 +26,13 @@ requires the gaps listed at the bottom to be answered first.
 
 ### 1. `D:\vite\zapi\internal.zapihq.com` — internal admin (real spec, wrong domain)
 
-| Artifact                                                                | What it covers                                                                                                                                                                                                                                                                                    |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Artifact | What it covers |
+|---|---|
 | `openapi.yaml` (root, 2,068 lines, OpenAPI 3.1.0, version `2026-08-26`) | Zapi Staff IAM API (internal): Departments, Roles, Permissions, Users, Auth (TOTP MFA, sessions, refresh), Grants, AuthorizationChecks (mTLS only). Full request/response schemas, cursor pagination, error responses (InvalidCursor / Unauthorized / Forbidden), bearer `staffSession` security. |
-| `staff-iam.json`                                                        | Permission catalog + access tiers aligned with `openapi.yaml`.                                                                                                                                                                                                                                    |
-| `src/apiClient.ts`                                                      | Axios client for `VITE_IAM_API_URL`: bearer-token attach, 401→`/auth/refresh` rotation via HttpOnly cookie. Internal usage pattern only.                                                                                                                                                          |
-| `docs/adr/` (5 ADRs)                                                    | Cursor pagination contract, entity schemas, form-bridge — internal IAM conventions.                                                                                                                                                                                                               |
-| `docs/agents/*`, `GLOSSARY.md`, `CODING_STANDARDS.md`                   | Repo conventions; all scoped to staff IAM.                                                                                                                                                                                                                                                        |
+| `staff-iam.json` | Permission catalog + access tiers aligned with `openapi.yaml`. |
+| `src/apiClient.ts` | Axios client for `VITE_IAM_API_URL`: bearer-token attach, 401→`/auth/refresh` rotation via HttpOnly cookie. Internal usage pattern only. |
+| `docs/adr/` (5 ADRs) | Cursor pagination contract, entity schemas, form-bridge — internal IAM conventions. |
+| `docs/agents/*`, `GLOSSARY.md`, `CODING_STANDARDS.md` | Repo conventions; all scoped to staff IAM. |
 
 Key negative finding: `openapi.yaml`'s descriptions reference
 `microservice_implementation/stage_1/FEATURES.md` and
@@ -45,17 +45,17 @@ repo is simply not present on this machine.
 - `app/products/payments/terminal.tsx` — a `curl https://api.zapihq.com/v1/payments`
   snippet (`Bearer sk_live_...`, `amount=1000`, `currency=ETB`, response
   `{ id: "pay_9f2c1a", status: "initiated", amount, currency, checkout_url:
-"https://pay.zapihq.com/pay_9f2c1a" }`). Footer literally says **"Illustrative API
+  "https://pay.zapihq.com/pay_9f2c1a" }`). Footer literally says **"Illustrative API
   flow"** — intentional placeholder, not spec.
 - `components/common/hero/hero-terminal.tsx` — three `@zapi/node` SDK snippets:
   - `new Zapi('sk_live_...')`; `zapi.transfers.create({ amount: 5000, currency: 'etb', destination: 'acct_1Lj2...', description })`
   - `zapi.payments.create({ amount, currency, payment_method: 'tele_birr', confirm: true })`
   - `zapi.webhooks.constructEvent(req.rawBody, req.headers['zapi-signature'], 'whsec_live_...')`
-    These are the only constraints on the SDK surface anywhere, and they are marketing
-    copy, not library source.
+  These are the only constraints on the SDK surface anywhere, and they are marketing
+  copy, not library source.
 - `components/common/future-grid/index.tsx` — webhook payload sample
   (`POST /webhook/zapi`, `{ "type": "payment.success", "data": { "id": "txn_12345",
-"amount": 50000, "currency": "etb", "provider": "telebirr" } }`; "idempotent JSON
+  "amount": 50000, "currency": "etb", "provider": "telebirr" } }`; "idempotent JSON
   payloads… 3-try retry policy, event logging, manual webhook refiring"),
   Idempotency-Key card (`Idempotency-Key: req_9x8...`, "same 200 OK",
   "24-hour window"), test-mode card (simulated latency, mock errors, timeouts,
@@ -100,21 +100,21 @@ repo is simply not present on this machine.
 
 ## Ground-truth status table
 
-| Docs input                                     | Ground truth exists?         | Where                                                                                                   |
-| ---------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Public payments endpoints / parameters         | ❌ No                        | Nowhere (only illustrative `{amount, currency, reference}` on `POST /v1/payments`)                      |
-| Auth (`Authorization: Bearer sk_live/sk_test`) | ⚠️ Marketing only            | `terminal.tsx`, `hero-terminal.tsx` (`sk_live_...`)                                                     |
-| Webhook events                                 | ⚠️ One event, marketing only | `payment.success` in `future-grid/index.tsx`; delivery path `POST /webhook/zapi`; 3-try retry claim     |
-| Webhook signature scheme                       | ⚠️ Marketing only            | `zapi-signature` header + `whsec_live_...` + `zapi.webhooks.constructEvent` (Stripe-shaped, unverified) |
-| Idempotency (key enforcement, 24h window)      | ⚠️ Marketing only            | `future-grid/index.tsx` (`req_9x8...`, "Same 200 OK")                                                   |
-| Test mode / error simulation                   | ⚠️ Marketing prose only      | `future-grid/index.tsx`; no canned test numbers or force-error codes anywhere                           |
-| Refunds (partial/full)                         | ⚠️ Marketing prose only      | `future-grid/index.tsx` refund card; no endpoint/params                                                 |
-| Transfers / payouts                            | ⚠️ Marketing only            | `hero-terminal.tsx` (`transfers.create`)                                                                |
-| Multi-party settlement / virtual accounts      | ⚠️ Marketing prose only      | settlement diagram; no virtual-account API anywhere                                                     |
-| `@zapi/node` SDK                               | ❌ No source; not on npm     | Only the three marketing snippets                                                                       |
-| Error codes / error response envelope          | ❌ No                        | Nothing public; IAM spec's error shapes are internal-only                                               |
-| Currency casing (`ETB` vs `etb`)               | ❌ Inconsistent              | Marketing mixes both — must be decided                                                                  |
-| Fee/pricing figures                            | ⚠️ Marketing constants       | `fee-calculator.tsx` (2% domestic, 1.5% international)                                                  |
+| Docs input | Ground truth exists? | Where |
+|---|---|---|
+| Public payments endpoints / parameters | ❌ No | Nowhere (only illustrative `{amount, currency, reference}` on `POST /v1/payments`) |
+| Auth (`Authorization: Bearer sk_live/sk_test`) | ⚠️ Marketing only | `terminal.tsx`, `hero-terminal.tsx` (`sk_live_...`) |
+| Webhook events | ⚠️ One event, marketing only | `payment.success` in `future-grid/index.tsx`; delivery path `POST /webhook/zapi`; 3-try retry claim |
+| Webhook signature scheme | ⚠️ Marketing only | `zapi-signature` header + `whsec_live_...` + `zapi.webhooks.constructEvent` (Stripe-shaped, unverified) |
+| Idempotency (key enforcement, 24h window) | ⚠️ Marketing only | `future-grid/index.tsx` (`req_9x8...`, "Same 200 OK") |
+| Test mode / error simulation | ⚠️ Marketing prose only | `future-grid/index.tsx`; no canned test numbers or force-error codes anywhere |
+| Refunds (partial/full) | ⚠️ Marketing prose only | `future-grid/index.tsx` refund card; no endpoint/params |
+| Transfers / payouts | ⚠️ Marketing only | `hero-terminal.tsx` (`transfers.create`) |
+| Multi-party settlement / virtual accounts | ⚠️ Marketing prose only | settlement diagram; no virtual-account API anywhere |
+| `@zapi/node` SDK | ❌ No source; not on npm | Only the three marketing snippets |
+| Error codes / error response envelope | ❌ No | Nothing public; IAM spec's error shapes are internal-only |
+| Currency casing (`ETB` vs `etb`) | ❌ Inconsistent | Marketing mixes both — must be decided |
+| Fee/pricing figures | ⚠️ Marketing constants | `fee-calculator.tsx` (2% domestic, 1.5% international) |
 
 ## Recommended mechanics once truth exists
 
