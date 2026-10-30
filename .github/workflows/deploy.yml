@@ -9,15 +9,13 @@ on:
 permissions:
   contents: read
 
+# A deploy is a sequence of remote mutations; never cancel one halfway.
 concurrency:
   group: production-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
-  NODE_VERSION: "22"
-  PNPM_VERSION: "11.17.0"
-  APP_NAME: zapi-docs
-  SSH_OPTIONS: "-i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts"
+  SSH_OPTIONS: "-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/runner/.ssh/known_hosts"
 
 jobs:
   ci:
@@ -28,7 +26,7 @@ jobs:
 
   # Publishing lives in its own reusable workflow so the image pipeline can
   # change without touching the deploy. The call is gated on the checks and
-  # exposes the published tag for the container deploy (#34).
+  # exposes the immutable tag this run produced.
   publish:
     name: Publish Image
     needs: ci
@@ -39,78 +37,190 @@ jobs:
 
   deploy:
     name: Deploy to Production
-    needs: ci
+    needs: [ci, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: production
+    permissions:
+      contents: read
+      packages: read
     env:
-      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
-      PORT: ${{ vars.PORT }}
-      OPENROUTER_API_KEY: ${{ vars.OPENROUTER_API_KEY }}
-      RUNTIME_ENV_FILE: ${{ secrets.RUNTIME_ENV_FILE }}
+      IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
+      IMAGE_REPOSITORY: ${{ needs.publish.outputs.image }}
+      IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      SSH_HOST: ${{ vars.SSH_HOST }}
+      SSH_PORT: ${{ vars.SSH_PORT }}
+      SSH_USER: ${{ vars.SSH_USER }}
+      PORT: ${{ vars.PORT || '3002' }}
+      GHCR_USER: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build application
-        run: pnpm build
-
-      - name: Package standalone release
-        run: bash ./scripts/deploy/package-release.sh
+      - name: Validate deploy configuration
+        run: |
+          set -euo pipefail
+          for name in IMAGE_TAG DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER PORT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing deploy configuration: ${name}"
+              exit 1
+            fi
+          done
+          echo "Deploying ${IMAGE_REPOSITORY}:${IMAGE_TAG} to ${DEPLOY_PATH}"
 
       - name: Prepare SSH credentials
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: bash ./scripts/deploy/prepare-ssh.sh
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
-      - name: Validate deploy configuration
-        env:
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-        run: bash ./scripts/deploy/validate-config.sh
+      # The compose file is CI-owned and re-synced every deploy. The env file
+      # beside it is operator-owned; nothing here writes or deletes it.
+      - name: Sync compose file
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
+          scp -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -P "$SSH_PORT" \
+            docker/compose.yml "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/compose.yml"
 
-      - name: Upload release archive
-        env:
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-        run: bash ./scripts/deploy/upload-release.sh
+      # The registry token is staged as a file so it never appears in a
+      # process list on the server. The remote script deletes it after login.
+      - name: Stage registry token
+        run: |
+          set -euo pipefail
+          trap 'rm -f /tmp/ghcr-token' EXIT
+          umask 077
+          printf '%s' "$GHCR_TOKEN" > /tmp/ghcr-token
+          scp -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -P "$SSH_PORT" \
+            /tmp/ghcr-token "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/.ghcr-token"
+          rm -f /tmp/ghcr-token
 
-      - name: Write runtime environment file
-        if: ${{ env.RUNTIME_ENV_FILE != '' || env.PORT != '' }}
-        env:
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          PORT: ${{ vars.PORT }}
-        run: bash ./scripts/deploy/write-runtime-env.sh
+      - name: Pull, replace, verify, prune
+        run: |
+          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
 
-      - name: Activate release atomically
-        env:
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-          KEEP_RELEASES: ${{ vars.KEEP_RELEASES || '5' }}
-        run: bash ./scripts/deploy/activate-release.sh
+          fail() {
+            printf '::error::%s\n' "$*" >&2
+            exit 1
+          }
+
+          cd "$DEPLOY_PATH" || fail "missing deploy directory: $DEPLOY_PATH"
+
+          # deploy_doc is not in the docker group: that is an implicit root
+          # grant. The narrow sudoers rule allows exactly this binary instead.
+          DOCKER=(sudo -n /usr/bin/docker)
+
+          # The registry credential is the run's short-lived token, staged by
+          # the workflow as a file so it never reaches a process list. Remove it
+          # on every exit path, including failures before login.
+          TOKEN_FILE=.ghcr-token
+          logout() {
+            "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true
+            rm -f "$TOKEN_FILE"
+          }
+          trap logout EXIT
+
+          [ -f compose.yml ] || fail "compose.yml was not synced"
+          [ -f .env ] || fail "missing operator-owned env file: $DEPLOY_PATH/.env"
+          [ -f "$TOKEN_FILE" ] || fail "missing staged registry token"
+
+          mode="$(stat -c '%a' .env)"
+          [ "$mode" = "600" ] || fail "$DEPLOY_PATH/.env must be mode 600, found $mode"
+
+          "${DOCKER[@]}" version >/dev/null 2>&1 ||
+            fail "deploy user cannot run docker; add the NOPASSWD /usr/bin/docker rule"
+
+          # Keep the values out of the compose interpolation environment: the
+          # file is the single source, so a rollback cannot be overridden by a
+          # stale exported tag.
+          TAG="$IMAGE_TAG"
+          HOST_PORT="$PORT"
+          unset IMAGE_TAG PORT
+
+          # sudo resets the environment, so the compose variables live in a
+          # CI-owned interpolation file rather than being passed through the
+          # shell. It carries no secrets.
+          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$TAG" "$HOST_PORT" > .image.env
+          chmod 644 .image.env
+          COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
+
+          echo "Logging in to ghcr.io as $GHCR_USER"
+          "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin < "$TOKEN_FILE" >/dev/null ||
+            fail "registry login failed"
+          rm -f "$TOKEN_FILE"
+
+          echo "Pulling $IMAGE_REPOSITORY:$TAG"
+          if ! "${COMPOSE[@]}" pull; then
+            fail "pull failed; the running container is untouched"
+          fi
+
+          previous_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs 2>/dev/null || true)"
+          previous_tag="${previous_image##*:}"
+          echo "Previous tag: ${previous_tag:-none}"
+
+          # Restore the tag that was running before this deploy. A failure here
+          # is reported separately, so a broken restore cannot hide behind the
+          # original health error.
+          restore_previous() {
+            if [ -z "$previous_tag" ] || [ "$previous_tag" = "$TAG" ]; then
+              return 1
+            fi
+            echo "Restoring $previous_tag"
+            printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$HOST_PORT" > .image.env
+            "${COMPOSE[@]}" up --detach --wait --wait-timeout 90
+          }
+
+          echo "Replacing the running container with $TAG"
+          if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
+            "${COMPOSE[@]}" logs --tail 100 app || true
+            if restore_previous; then
+              fail "new container unhealthy; restored $previous_tag"
+            fi
+            fail "new container unhealthy; no previous container to restore"
+          fi
+
+          # Health is a contract, not a container-state detail: speak HTTP to it.
+          body=""
+          for _ in $(seq 1 30); do
+            body="$(curl --silent --max-time 5 "http://127.0.0.1:${HOST_PORT}/api/health" || true)"
+            if [ "$body" = '{"status":"ok"}' ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$body" != '{"status":"ok"}' ]; then
+            if restore_previous; then
+              fail "GET /api/health returned '${body}'; restored $previous_tag"
+            fi
+            fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+          fi
+
+          echo "Pruning images older than seven days"
+          "${DOCKER[@]}" image prune --all --force \
+            --filter "until=168h" \
+            --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" >/dev/null || true
+
+          echo "Live tag: $TAG"
+          REMOTE
