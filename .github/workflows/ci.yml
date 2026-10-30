@@ -72,3 +72,13 @@ jobs:
 
       - name: Verify container seam
         run: bash ./scripts/check-container.sh zapi-docs:ci
+
+      # Temporary: read production state before the container cutover (#34).
+      - name: Inspect production server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+        run: bash ./scripts/inspect-server.sh
