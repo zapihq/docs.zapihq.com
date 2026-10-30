@@ -30,8 +30,7 @@ docker run --rm -p 3000:3000 zapi-docs
 into the output. `PORT` and `HOSTNAME` are runtime variables and default to
 `3000` and `0.0.0.0`. The site starts without secrets; chat and page feedback
 also need `OPENROUTER_API_KEY`, `GITHUB_APP_ID`, and `GITHUB_APP_PRIVATE_KEY` at
-runtime. The image carries no git history, so per-page "Last updated" dates are
-omitted.
+runtime.
 
 CI builds the image and exercises it on every pull request with
 `scripts/check-container.sh` (Docker, bash, and curl). Run the same checks
