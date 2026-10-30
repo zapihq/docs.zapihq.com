@@ -5,6 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: >-
+          Published image tag to deploy instead of this run's build, for
+          rolling back (for example sha-1a2b3c4). Leave empty for a normal
+          deploy.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -20,6 +29,10 @@ env:
 jobs:
   ci:
     name: Checks
+    # A rollback deploys an image that was already built and verified when its
+    # tag was published. Rebuilding it adds minutes to an incident and cannot
+    # change the result.
+    if: ${{ github.event_name == 'push' || inputs.image_tag == '' }}
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
@@ -30,6 +43,7 @@ jobs:
   publish:
     name: Publish Image
     needs: ci
+    if: ${{ github.event_name == 'push' || inputs.image_tag == '' }}
     uses: ./.github/workflows/publish.yml
     permissions:
       contents: read
@@ -38,6 +52,11 @@ jobs:
   deploy:
     name: Deploy to Production
     needs: [ci, publish]
+    # Run after a successful pipeline, or for a dispatch that names the tag to
+    # roll back to. A failed check or publish must never reach production.
+    if: >-
+      ${{ !cancelled() && (needs.publish.result == 'success' ||
+      (github.event_name == 'workflow_dispatch' && inputs.image_tag != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -45,9 +64,8 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
-      IMAGE_REPOSITORY: ${{ needs.publish.outputs.image }}
-      IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+      REQUESTED_TAG: ${{ inputs.image_tag }}
+      BUILT_TAG: ${{ needs.publish.outputs.image_tag }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       SSH_HOST: ${{ vars.SSH_HOST }}
       SSH_PORT: ${{ vars.SSH_PORT }}
@@ -60,10 +78,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # The image to deploy is either the one this run published or the tag the
+      # operator named. The input is never a suggestion: a dispatch carrying a
+      # tag always deploys that tag, and a dispatch carrying nothing deploys
+      # this run's build.
+      - name: Resolve image tag
+        run: |
+          set -euo pipefail
+
+          if [ -n "$REQUESTED_TAG" ]; then
+            tag="$REQUESTED_TAG"
+            echo "Deploy mode: rollback to an earlier published tag"
+          elif [ -n "$BUILT_TAG" ]; then
+            tag="$BUILT_TAG"
+            echo "Deploy mode: this run's build"
+          else
+            echo "::error::No image tag: pass image_tag, or deploy a commit that publishes one."
+            exit 1
+          fi
+
+          # Docker's tag grammar. Besides rejecting typos, this is what makes
+          # the input safe to carry into the remote shell and compose file.
+          if ! [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Invalid image_tag '${tag}': expected a Docker tag such as sha-1a2b3c4."
+            exit 1
+          fi
+
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          {
+            echo "IMAGE_TAG=${tag}"
+            echo "IMAGE_REPOSITORY=${repository}"
+            echo "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "::notice title=Deploy target::${repository}:${tag}"
+
       - name: Validate deploy configuration
         run: |
           set -euo pipefail
-          for name in IMAGE_TAG DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER PORT; do
+          for name in IMAGE_TAG IMAGE_REPOSITORY DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER PORT; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing deploy configuration: ${name}"
               exit 1
@@ -162,7 +214,10 @@ jobs:
           # sudo resets the environment, so the compose variables live in a
           # CI-owned interpolation file rather than being passed through the
           # shell. It carries no secrets.
-          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$TAG" "$HOST_PORT" > .image.env
+          write_image_env() {
+            printf 'IMAGE_TAG=%s\nPORT=%s\n' "$1" "$HOST_PORT" > .image.env
+          }
+          write_image_env "$TAG"
           chmod 644 .image.env
           COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
 
@@ -171,34 +226,87 @@ jobs:
             fail "registry login failed"
           rm -f "$TOKEN_FILE"
 
-          echo "Pulling $IMAGE_REPOSITORY:$TAG"
-          if ! "${COMPOSE[@]}" pull; then
-            fail "pull failed; the running container is untouched"
-          fi
-
+          # Record what is running before anything can change it, so a failed
+          # rollback can say what stayed live and restore the interpolation
+          # file to match.
           previous_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs 2>/dev/null || true)"
           previous_tag="${previous_image##*:}"
           echo "Previous tag: ${previous_tag:-none}"
 
-          # Restore the tag that was running before this deploy. A failure here
-          # is reported separately, so a broken restore cannot hide behind the
-          # original health error.
+          # A pull failure is the normal outcome of a mistyped or inaccessible
+          # tag. It must name the reason and leave the running container alone.
+          echo "Pulling $IMAGE_REPOSITORY:$TAG"
+          pull_ok=1
+          pull_output="$("${COMPOSE[@]}" pull 2>&1)" || pull_ok=0
+          printf '%s\n' "$pull_output"
+          if [ "$pull_ok" -eq 0 ]; then
+            pull_lower="$(printf '%s' "$pull_output" | tr '[:upper:]' '[:lower:]')"
+            if [ -n "$previous_tag" ]; then
+              write_image_env "$previous_tag"
+              outcome="the running container (${previous_tag}) is untouched"
+            else
+              # Leave no interpolation file naming a tag that does not exist.
+              rm -f .image.env
+              outcome="no container was running"
+            fi
+            case "$pull_lower" in
+              # GHCR says "denied" both for a tag that is missing from a
+              # private package and for a token that cannot read it, so the
+              # message must not claim which of the two it was.
+              *unauthorized* | *denied* | *forbidden*)
+                fail "cannot pull ${IMAGE_REPOSITORY}:${TAG}: the tag is missing or the token cannot read it; ${outcome}"
+                ;;
+              *"manifest unknown"* | *"not found"* | *"no such"*)
+                fail "image tag '${TAG}' is not published in ${IMAGE_REPOSITORY}; ${outcome}"
+                ;;
+              *)
+                fail "pull of ${IMAGE_REPOSITORY}:${TAG} failed; ${outcome}"
+                ;;
+            esac
+          fi
+
+          # Restore the tag that was running before this deploy. The reason a
+          # restore was skipped or failed is recorded for the caller, so a
+          # broken restore cannot hide behind the original error or claim to
+          # have restored something it did not.
+          restore_reason=""
           restore_previous() {
-            if [ -z "$previous_tag" ] || [ "$previous_tag" = "$TAG" ]; then
+            if [ -z "$previous_tag" ]; then
+              restore_reason="no previous container to restore"
+              return 1
+            fi
+            if [ "$previous_tag" = "$TAG" ]; then
+              restore_reason="the previous container was already ${TAG}"
               return 1
             fi
             echo "Restoring $previous_tag"
-            printf 'IMAGE_TAG=%s\nPORT=%s\n' "$previous_tag" "$HOST_PORT" > .image.env
-            "${COMPOSE[@]}" up --detach --wait --wait-timeout 90
+            write_image_env "$previous_tag"
+            if "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
+              return 0
+            fi
+            restore_reason="restoring ${previous_tag} failed"
+            return 1
+          }
+
+          restore_on_failure() {
+            if restore_previous; then
+              fail "$1; restored $previous_tag"
+            fi
+            fail "$1; ${restore_reason}"
           }
 
           echo "Replacing the running container with $TAG"
           if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
             "${COMPOSE[@]}" logs --tail 100 app || true
-            if restore_previous; then
-              fail "new container unhealthy; restored $previous_tag"
-            fi
-            fail "new container unhealthy; no previous container to restore"
+            restore_on_failure "new container unhealthy"
+          fi
+
+          # The tag in the log has to describe the container that is actually
+          # running, not the one that was requested.
+          running_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs)"
+          running_tag="${running_image##*:}"
+          if [ "$running_tag" != "$TAG" ]; then
+            restore_on_failure "container is running '${running_tag}', expected '${TAG}'"
           fi
 
           # Health is a contract, not a container-state detail: speak HTTP to it.
@@ -211,10 +319,7 @@ jobs:
             sleep 1
           done
           if [ "$body" != '{"status":"ok"}' ]; then
-            if restore_previous; then
-              fail "GET /api/health returned '${body}'; restored $previous_tag"
-            fi
-            fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+            restore_on_failure "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
           fi
 
           echo "Pruning images older than seven days"
@@ -223,4 +328,14 @@ jobs:
             --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" >/dev/null || true
 
           echo "Live tag: $TAG"
+          echo "Live image: $IMAGE_REPOSITORY:$TAG"
           REMOTE
+
+      - name: Report the live tag
+        run: |
+          echo "::notice title=Live tag::${IMAGE_TAG} is serving production"
+          {
+            echo "### Deployed"
+            echo ""
+            echo "\`${IMAGE_REPOSITORY}:${IMAGE_TAG}\` is live and healthy."
+          } >> "$GITHUB_STEP_SUMMARY"
