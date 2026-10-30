@@ -29,11 +29,11 @@ a file for login and removed afterwards, so no long-lived registry credential
 sits on the box. The deploy account is not in the `docker` group, which is an
 implicit root grant; it gets one sudoers rule for `/usr/bin/docker` instead.
 
-Rollback is a `workflow_dispatch` carrying the previous `sha-*` tag. It skips
-checks and publishing, pulls that tag, and reuses the normal deploy path. A
-failed pull leaves the running container alone. If the new container is
-unhealthy, the deploy restores the previously running tag and says whether that
-restore succeeded.
+Rollback is a `workflow_dispatch` carrying the previous `sha-*` tag, as long as
+that tag is still inside the retention window. It skips checks and publishing,
+pulls that tag, and reuses the normal deploy path. A failed pull leaves the
+running container alone. If the new container is unhealthy, the deploy restores
+the previously running tag and says whether that restore succeeded.
 
 ## Consequences
 
@@ -59,9 +59,10 @@ restore succeeded.
 - The image is amd64-only and there is one production environment. There is no
   separate pre-production environment, per-PR preview, or secret manager; the
   server `.env` stays hand-managed.
-- Old images are pruned on the server after a successful deploy. Registry tag
-  cleanup is not automated in this repository, so a rollback target must still
-  exist in GHCR.
+- Old images are pruned on the server after a successful deploy, and the
+  publish job keeps the 20 newest `sha-*` versions plus `latest` in GHCR,
+  deleting older `sha-*`-only and unattached versions, so a rollback target
+  older than that window is gone unless it also carries a manual tag.
 
 ## Rejected alternatives
 
