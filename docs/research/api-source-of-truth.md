@@ -84,7 +84,7 @@ repo is simply not present on this machine.
 - Pure Fumadocs starter: `content/docs/index.mdx` ("Hello World"), `test.mdx`.
   `content/docs/{api-reference,concepts,guides,integration,payment-methods}/` exist
   but are **empty directories**.
-- `source.config.ts`, `app/`, `lib/`, `scripts/` contain **no** references
+- `source.config.ts`, `app/`, `lib/`, `scripts/deploy/*` contain **no** references
   to spec files, OpenAPI generation, or API seeds. No Fumadocs OpenAPI plugin is
   installed.
 - Git history: starter scaffold + CI/agent workflow only (5 commits, no docs content).
