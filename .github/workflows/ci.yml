@@ -81,7 +81,7 @@ jobs:
     timeout-minutes: 10
     environment: production
     permissions:
-      contents: read
+      contents: write
       packages: read
     steps:
       - name: Prepare SSH credentials
@@ -155,3 +155,38 @@ jobs:
           }
           echo "Live tag: $IMAGE_TAG"
           REMOTE
+
+      - name: Publish status
+        if: always()
+        env:
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+        run: |
+          set -uo pipefail
+          {
+            echo "container:"
+            ssh -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              'sudo -n /usr/bin/docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" 2>&1 || true' 2>&1 || true
+            echo "health:"
+            ssh -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              'curl -sS -m 5 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/api/health 2>&1 || true' 2>&1 || true
+            echo "healthcheck:"
+            ssh -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              'sudo -n /usr/bin/docker inspect --format "{{.State.Health.Status}}" zapi-docs 2>&1 || true' 2>&1 || true
+          } > ci-status.txt
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci-status.txt
+          git commit -m "chore: cutover status [skip ci]" || exit 0
+          git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
