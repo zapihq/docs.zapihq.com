@@ -21,6 +21,9 @@ jobs:
     name: Lint, Typecheck And Container
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
+    env:
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
       - name: Checkout repository
@@ -62,7 +65,7 @@ jobs:
           platforms: linux/amd64
           load: true
           build-args: |
-            NEXT_PUBLIC_SITE_URL=https://docs.zapihq.com
+            NEXT_PUBLIC_SITE_URL=${{ env.NEXT_PUBLIC_SITE_URL }}
           tags: zapi-docs:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
