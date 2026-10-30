@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+
+# Build output and generated content
+.next
+out
+build
+coverage
+.source
+*.tsbuildinfo
+next-env.d.ts
+
+# Version control and worktrees
+.git
+.gitignore
+.worktrees
+.claude
+
+# Local environment files — production secrets arrive at runtime, and the
+# public site URL arrives as a build argument.
+.env
+.env.*
+
+# Local tooling and noise
+.github
+.husky
+.vscode
+.idea
+.taste-skill
+*.log
+.DS_Store
