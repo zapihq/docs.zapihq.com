@@ -73,33 +73,18 @@ jobs:
       - name: Verify container seam
         run: bash ./scripts/check-container.sh zapi-docs:ci
 
-  # Temporary: read production state before the container cutover (#34).
-  inspect:
-    name: Inspect Production Server
+  # Temporary one-off cutover (#34): seed the operator env file and bring the
+  # already-published image up on loopback. Removed before merge.
+  cutover:
+    name: Cut Over To Container
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: production
+    permissions:
+      contents: read
+      packages: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Inspect production server
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-          SSH_PORT: ${{ vars.SSH_PORT }}
-          SSH_USER: ${{ vars.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-        run: bash ./scripts/inspect-server.sh
-
-  # Temporary: seed the operator-owned env file once at cutover (#34).
-  bootstrap-env:
-    name: Bootstrap Env File
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: production
-    steps:
-      - name: Seed /opt/zapi-docs/.env
+      - name: Prepare SSH credentials
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
@@ -115,16 +100,58 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-          ssh_opts=(-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts
-            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
+          scp -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -P "$SSH_PORT" \
+            docker/compose.yml "$SSH_USER@$SSH_HOST:/opt/zapi-docs/compose.yml"
 
-          if ssh "${ssh_opts[@]}" 'test -f /opt/zapi-docs/.env'; then
-            echo "operator .env already exists; leaving it untouched"
-          else
-            printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" |
-              ssh "${ssh_opts[@]}" 'umask 077; cat > /opt/zapi-docs/.env; chmod 600 /opt/zapi-docs/.env'
+          ssh -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "OPENROUTER_API_KEY='$OPENROUTER_API_KEY' IMAGE_TAG='latest' PORT='3002' GHCR_USER='${{ github.actor }}' GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          cd /opt/zapi-docs
+          if [ ! -f .env ]; then
+            umask 077
+            printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" > .env
+            chmod 600 .env
             echo "created operator .env"
+          else
+            echo "operator .env already exists; leaving it untouched"
           fi
+          stat -c '%a %U:%G %n' .env
+          cut -d= -f1 .env
 
-          ssh "${ssh_opts[@]}" "stat -c '%a %U:%G %n' /opt/zapi-docs/.env; cut -d= -f1 /opt/zapi-docs/.env"
+          printf 'IMAGE_TAG=%s\nPORT=%s\n' "$IMAGE_TAG" "$PORT" > .image.env
+          chmod 644 .image.env
+
+          DOCKER=(sudo -n /usr/bin/docker)
+          "${DOCKER[@]}" version >/dev/null
+          logout() { "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true; }
+          trap logout EXIT
+
+          printf '%s' "$GHCR_TOKEN" |
+            "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null
+
+          "${DOCKER[@]}" compose --env-file .image.env pull
+          "${DOCKER[@]}" compose --env-file .image.env up --detach --wait --wait-timeout 90
+
+          body=""
+          for _ in $(seq 1 30); do
+            body="$(curl --silent --max-time 5 "http://127.0.0.1:${PORT}/api/health" || true)"
+            if [ "$body" = '{"status":"ok"}' ]; then
+              break
+            fi
+            sleep 1
+          done
+          [ "$body" = '{"status":"ok"}' ] || {
+            "${DOCKER[@]}" compose --env-file .image.env logs --tail 100 app || true
+            echo "::error::health check failed: $body"
+            exit 1
+          }
+          echo "Live tag: $IMAGE_TAG"
+          REMOTE
