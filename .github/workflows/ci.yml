@@ -84,6 +84,11 @@ jobs:
       contents: write
       packages: read
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+
       - name: Prepare SSH credentials
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
