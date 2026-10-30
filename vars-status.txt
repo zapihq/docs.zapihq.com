@@ -1,2 +1,0 @@
-variables:
-{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/actions/variables#list-environment-variables","status":"403"}
