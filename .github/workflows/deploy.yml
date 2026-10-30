@@ -101,6 +101,7 @@ jobs:
       - name: Pull, replace, verify, prune
         run: |
           ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
             "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' GHCR_TOKEN='$GHCR_TOKEN' bash -s" <<'REMOTE'
           set -Eeuo pipefail
 
