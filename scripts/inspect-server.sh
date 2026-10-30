@@ -19,6 +19,9 @@ section "identity"
 id
 groups
 
+section "root login with the deploy key"
+ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "root@$SSH_HOST" 'id' 2>&1 || true
+
 section "docker"
 docker --version || true
 docker compose version || true
