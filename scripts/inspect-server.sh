@@ -9,7 +9,7 @@ chmod 600 ~/.ssh/id_ed25519
 printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 chmod 644 ~/.ssh/known_hosts
 
-SSH=(ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
+SSH=(ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
 
 "${SSH[@]}" 'bash -s' <<'REMOTE'
 set -uo pipefail

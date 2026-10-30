@@ -1,0 +1,31 @@
+# Production topology for docs.zapihq.com, owned by CI.
+#
+# The deploy job copies this file to ${DEPLOY_PATH}/compose.yml on every run.
+# The env file beside it (.env) is operator-owned: CI never writes it, and it is
+# the only place the runtime secrets live on the server.
+#
+# nginx stays on the host, terminating TLS and enforcing Basic Auth. The app is
+# published on loopback only, on the port nginx proxies to.
+
+name: zapi-docs
+
+services:
+  app:
+    image: ghcr.io/zapihq/docs.zapihq.com:${IMAGE_TAG:?IMAGE_TAG must name a published image tag}
+    container_name: zapi-docs
+    restart: unless-stopped
+    # Loopback only. The public interface is nginx's job.
+    ports:
+      - "127.0.0.1:${PORT:-3002}:3000"
+    env_file:
+      - .env
+    # The image listens on 3000; keep the container port independent of the
+    # host-facing PORT so an operator's .env cannot break the port mapping.
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
