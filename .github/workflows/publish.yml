@@ -78,7 +78,25 @@ jobs:
           # The run's own short-lived token; no long-lived registry secret.
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A `sha-*` tag is immutable. Re-running a commit must reuse the image
+      # that tag already names, not overwrite it with a new digest; otherwise
+      # an idempotent deploy would recreate the running container.
+      - name: Check whether the immutable tag already exists
+        id: existing
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          SHA_TAG: ${{ steps.image.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "${IMAGE}:${SHA_TAG}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${SHA_TAG} already exists; skipping the build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push image
+        if: ${{ steps.existing.outputs.exists != 'true' }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -98,6 +116,7 @@ jobs:
           IMAGE: ${{ steps.image.outputs.name }}
           SHA_TAG: ${{ steps.image.outputs.sha_tag }}
           ON_MAIN: ${{ steps.image.outputs.on_main }}
+          EXISTING: ${{ steps.existing.outputs.exists }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
         run: |
@@ -123,10 +142,11 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin >/dev/null
           docker pull "${IMAGE}:${SHA_TAG}" >/dev/null
 
-          # 3. On main, both tags point at the same published image, so
-          #    `latest` cannot silently lag behind the immutable commit tag.
+          # 3. On main, a freshly built image also moves `latest`, so the two
+          #    tags cannot silently diverge. A reused immutable tag leaves
+          #    `latest` where it is; the deploy never references it.
           sha_digest="$(docker buildx imagetools inspect "${IMAGE}:${SHA_TAG}" --format '{{.Manifest.Digest}}')"
-          if [ "$ON_MAIN" = "true" ]; then
+          if [ "$ON_MAIN" = "true" ] && [ "$EXISTING" != "true" ]; then
             latest_digest="$(docker buildx imagetools inspect "${IMAGE}:latest" --format '{{.Manifest.Digest}}')"
             if [ "$sha_digest" != "$latest_digest" ]; then
               echo "::error::latest (${latest_digest}) does not match ${SHA_TAG} (${sha_digest})."
