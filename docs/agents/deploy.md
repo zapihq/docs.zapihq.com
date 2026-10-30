@@ -15,7 +15,7 @@ triage. The decision behind it is in
 | Compose file    | `/opt/zapi-docs/compose.yml`. CI owns it and overwrites it on every deploy.                                                                                                                                                                                              |
 | Image variables | `/opt/zapi-docs/.image.env`, written by CI on every deploy. It carries `IMAGE_TAG` and `PORT`, no secrets.                                                                                                                                                               |
 | Runtime secrets | `/opt/zapi-docs/.env`, operator-owned, mode 600. CI never writes it.                                                                                                                                                                                                     |
-| Registry        | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference.                                                                                                                                            |
+| Registry        | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference. Retention is described under [Normal deploy](#normal-deploy).                                                                              |
 | Deploy account  | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group.                                                                                                                                           |
 | Workflow        | `.github/workflows/deploy.yml`, calling `ci.yml` and `publish.yml` on a normal deploy.                                                                                                                                                                                   |
 
@@ -34,7 +34,12 @@ gh workflow run deploy.yml
 On a push to `main`, the pipeline is: checks → publish image → deploy. A
 dispatch with no tag runs the same three jobs on the selected commit. The
 publish job builds `sha-<7>` plus `latest` only when the immutable tag does not
-already exist. The deploy job then:
+already exist, then prunes GHCR versions beyond the newest 20 `sha-*` versions,
+keeping `latest`. Only versions whose every tag is `sha-*` are deleted; a
+version with a manual tag is left alone. Untagged versions older than the
+oldest kept image are deleted too, so the attestation manifests buildx attaches
+to a pruned image do not pile up. The prune is best-effort: if the registry
+rejects it, that step goes red but the deploy still runs. The deploy job then:
 
 1. Resolves the tag, validates it against Docker's tag grammar, and checks the
    required environment variables and secrets.
@@ -78,7 +83,9 @@ gh workflow run deploy.yml -f image_tag=sha-1a2b3c4
 A dispatch carrying a tag skips checks and publishing and goes straight to the
 deploy job. It follows the normal pull, replace, and health path, so the run log
 and summary still report the live tag. Find the previous tag in the notice of an
-earlier successful run, or in the package's version list in GitHub.
+earlier successful run, or in the package's version list in GitHub. Only the
+newest 20 `sha-*` versions are kept, so a target older than that window has
+been deleted unless it also carries a manual tag.
 
 What the failure modes mean:
 
@@ -168,6 +175,7 @@ The workflow fails at a named stage. Start there before reading the stack.
 | Validate deploy configuration   | The `production` environment is missing a variable or secret. Required: `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `PORT`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`. `GITHUB_TOKEN` is automatic.                                                                                                                                                                     |
 | SSH or sync compose             | Host, port, user, key, and known-hosts. Confirm the deploy key still authenticates as `deploy_doc`, that port 22 is reachable, that `/opt/zapi-docs` is writable, and that `/home/deploy_doc/.ssh/authorized_keys` holds the deploy key.                                                                                                                                  |
 | Registry login or pull          | `image_tag` is a Docker tag, not a digest or branch. `not published` means the tag does not exist; `missing or the token cannot read it` deliberately covers both a missing tag and an unreadable private package. The running container is left alone.                                                                                                                   |
+| Prune old package versions      | The red step does not block the deploy. `::warning::Could not delete package version …` means the REST delete failed; a later publish that builds a new version retries it. If every publish goes red here, confirm the job still has `packages: write` and that the GHCR package is still linked to this repository.                                                     |
 | Missing `.env` or mode          | `/opt/zapi-docs/.env` must exist and be mode 600. Fix ownership and mode. Never let CI write it.                                                                                                                                                                                                                                                                          |
 | `deploy user cannot run docker` | The sudoers rule is missing or wrong. Install it as root and test `sudo -n /usr/bin/docker version`.                                                                                                                                                                                                                                                                      |
 | Compose up or unhealthy         | Read the job's last 100 container lines, then reproduce with `cd /opt/zapi-docs && sudo -n /usr/bin/docker compose --env-file .image.env logs --tail 100 app`. Check the image health status, the env keys, and whether something else owns 3002. The job attempts to restore the previous tag; if it says the restore failed, dispatch a rollback for the last good tag. |

@@ -162,3 +162,95 @@ jobs:
             exit 1
           fi
           echo "Authenticated pull of ${IMAGE}:${SHA_TAG} succeeded; revision ${revision}."
+
+      # Retention: the registry keeps the newest 20 immutable `sha-*` versions
+      # plus the version carrying `latest`, so neither the package nor the
+      # rollback window grows without bound. This runs after the new tag has
+      # been verified, so a failed build or a package whose visibility drifted
+      # never triggers a delete. Re-running an already-published tag skips it:
+      # nothing new was added, so an idempotent run does not mutate the package.
+      #
+      # Only versions whose tags are all `sha-*` are deleted by tag. A version
+      # carrying a manual tag is left alone. Untagged versions are deleted only
+      # when they are older than the oldest kept version: buildx attaches
+      # untagged provenance/attestation manifests per pushed image, and those
+      # share their parent's creation time, so a kept image keeps its children.
+      - name: Prune old package versions
+        # Housekeeping must never block a deploy: a registry hiccup or a
+        # permissions change turns this step red, not production.
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        continue-on-error: true
+        env:
+          OWNER: ${{ github.repository_owner }}
+          KEEP_SHA_VERSIONS: "20"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # GHCR names the package after the repository, lowercased.
+          package="${GITHUB_REPOSITORY#*/}"
+          package="${package,,}"
+
+          # The package API is under /orgs for an organization owner and under
+          # /users for a user owner. Read the owner's type instead of assuming.
+          owner_type="$(gh api "/users/${OWNER}" --jq .type)"
+          if [ "$owner_type" = "Organization" ]; then
+            versions_url="/orgs/${OWNER}/packages/container/${package}/versions"
+          else
+            versions_url="/users/${OWNER}/packages/container/${package}/versions"
+          fi
+
+          # Fetch every page, then sort by creation time below so retention
+          # does not depend on the API's ordering. Each version is one pushed
+          # manifest, usually carrying both its sha-* tag and latest.
+          versions="$(gh api --paginate "${versions_url}?per_page=100" | jq --slurp 'add // []')"
+
+          stale_ids="$(jq --raw-output --argjson keep "$KEEP_SHA_VERSIONS" '
+            def tags: .metadata.container.tags // [];
+            def is_sha_version: any(tags[]; startswith("sha-"));
+            def only_sha_tags: length > 0 and all(.[]; startswith("sha-"));
+
+            . as $all
+            | [ $all[] | select((tags | length) > 0) ] as $tagged
+            | ([ $tagged[] | select(any(tags[]; . == "latest")) | .id ]) as $latest
+            | ([ $tagged[]
+                 | select(is_sha_version)
+                 | . ] | sort_by(.created_at) | reverse | .[:$keep] | [ .[].id ]) as $recent
+            | ($latest + $recent) as $keep_ids
+            | ([ $tagged[]
+                 | select(.id as $id | ($keep_ids | index($id)))
+                 | .created_at ] | min) as $oldest_kept
+            | ( [ $tagged[]
+                  | select(.id as $id | ($keep_ids | index($id)) | not)
+                  | select(tags | only_sha_tags)
+                  | .id ]
+                + [ $all[]
+                    | select((tags | length) == 0)
+                    | select(.created_at < $oldest_kept)
+                    | .id ] )
+            | .[]
+          ' <<<"$versions")"
+
+          if [ -z "$stale_ids" ]; then
+            echo "Nothing to prune: no version is older than the newest ${KEEP_SHA_VERSIONS} sha-* versions."
+            exit 0
+          fi
+
+          # Keep deleting after one failure, so a single bad version does not
+          # leave every older one in place. The step still ends red, which is
+          # visible on a deploy that otherwise stays green.
+          pruned=0
+          failed=0
+          while IFS= read -r version_id; do
+            [ -n "$version_id" ] || continue
+            if gh api --method DELETE "${versions_url}/${version_id}" >/dev/null; then
+              pruned=$((pruned + 1))
+            else
+              echo "::warning::Could not delete package version ${version_id}; a publish that builds a new version retries it."
+              failed=$((failed + 1))
+            fi
+          done <<<"$stale_ids"
+          echo "Pruned ${pruned} old package version(s); kept ${KEEP_SHA_VERSIONS} sha-* versions plus latest."
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
