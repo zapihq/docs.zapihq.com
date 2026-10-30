@@ -22,6 +22,12 @@ definitions live in `GLOSSARY.md`.
 
 Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Deploying
+
+Production is a private GHCR image run by docker compose behind the host nginx;
+CI is the only deploy path. Deploy, rollback, first cutover, teardown, and
+failure triage live in `docs/agents/deploy.md`.
+
 ### Branch & PR workflow
 
 Never commit to `main`. All work happens in a worktree on a feature branch, ships as a PR via the `pr` skill, and lands via squash merge; "merge the PR" also syncs the attached issue's task list and purges branches/worktree. See `docs/agents/workflow.md`.
