@@ -16,7 +16,7 @@ triage. The decision behind it is in
 | Image variables | `/opt/zapi-docs/.image.env`, written by CI on every deploy. It carries `IMAGE_TAG` and `PORT`, no secrets.                                                                                                                                                               |
 | Runtime secrets | `/opt/zapi-docs/.env`, operator-owned, mode 600. CI never writes it.                                                                                                                                                                                                     |
 | Registry        | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference.                                                                                                                                            |
-| Deploy account  | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group. The home holds the deploy key in `.ssh/authorized_keys`.                                                                                  |
+| Deploy account  | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group.                                                                                                                                           |
 | Workflow        | `.github/workflows/deploy.yml`, calling `ci.yml` and `publish.yml` on a normal deploy.                                                                                                                                                                                   |
 
 The site is Basic Auth gated at nginx. `curl -I https://docs.zapihq.com`
@@ -99,26 +99,32 @@ deploy the unfixed code again.
 ## A fresh host
 
 A rebuilt host starts from a clean Ubuntu server; there is no older deploy
-layout to migrate. Install Docker with the compose plugin, create
-`/opt/zapi-docs`, and make it writable by `deploy_doc`. Create
-`/opt/zapi-docs/.env` with the runtime secrets, owned so compose can read it
-and mode 600; CI never writes it. Install the sudoers rule below, and point
-nginx's `docs.zapihq.com` block at `127.0.0.1:3002`. Leave the Basic Auth gate
-and wildcard certificate at the edge.
+layout to migrate. Do the host setup once, as root:
 
-The deploy account's home is `/home/deploy_doc`; its `.ssh/authorized_keys`
-holds the deploy key. Treat the home as credential state, not as part of a
-deploy directory.
+1. Install Docker with the compose plugin.
+2. Create the deploy account and install the public half of the deploy key:
 
-Then run the **Deploy** workflow:
+   ```bash
+   useradd --create-home --shell /bin/bash deploy_doc
+   install -d -m 700 -o deploy_doc -g deploy_doc /home/deploy_doc/.ssh
+   # Write the public key to /home/deploy_doc/.ssh/authorized_keys,
+   # owned by deploy_doc and mode 600.
+   ```
 
-```bash
-gh workflow run deploy.yml
-```
+3. Create `/opt/zapi-docs` and give `deploy_doc` write access. CI re-syncs
+   `compose.yml` and `.image.env` into it on every deploy.
+4. Create `/opt/zapi-docs/.env` with the runtime secrets, owned so compose can
+   read it and mode 600; CI never writes it.
+5. Install the sudoers rule below and point nginx's `docs.zapihq.com` block at
+   `127.0.0.1:3002`. Leave the Basic Auth gate and wildcard certificate at the
+   edge.
+6. In the `production` environment, keep `DEPLOY_PATH=/opt/zapi-docs`,
+   `PORT=3002`, and the `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`,
+   and `SSH_KNOWN_HOSTS` values.
 
-It writes `compose.yml` and `.image.env` to `/opt/zapi-docs`, pulls the image,
-starts the container, and verifies health. The rest of the runbook is the same
-as a normal deploy.
+Then run the **Deploy** workflow as in [Normal deploy](#normal-deploy). It
+writes `compose.yml` and `.image.env` to `/opt/zapi-docs`, pulls the image,
+starts the container, and verifies health.
 
 ## The deploy account's privilege
 
@@ -126,7 +132,7 @@ The deploy account is `deploy_doc`. It gets one sudoers entry in
 `/etc/sudoers.d/zapi-docs-deploy`:
 
 ```sudoers
-deploy_doc ALL=(root) NOPASSWD: /usr/bin/docker
+deploy_doc ALL=(ALL) NOPASSWD: /usr/bin/docker
 ```
 
 The file must be mode 0440 and valid according to `visudo -cf`. Test it as the
