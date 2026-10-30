@@ -73,49 +73,21 @@ jobs:
       - name: Verify container seam
         run: bash ./scripts/check-container.sh zapi-docs:ci
 
-  # Temporary: seed the operator-owned env file once at cutover (#34).
-  bootstrap-env:
-    name: Bootstrap Env File
+  # Temporary: read production state before the container cutover (#34).
+  inspect:
+    name: Inspect Production Server
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
     steps:
-      - name: Prepare SSH credentials
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Inspect production server
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_KEY_BOOTSTRAP }}
           SSH_PORT: ${{ vars.SSH_PORT }}
           SSH_USER: ${{ vars.SSH_USER }}
           SSH_HOST: ${{ vars.SSH_HOST }}
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-          ssh -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "OPENROUTER_API_KEY='$OPENROUTER_API_KEY' bash -s" <<'REMOTE'
-          set -Eeuo pipefail
-
-          cd /opt/zapi-docs
-          test "$(stat -c '%U' .)" = "deploy_doc" || { echo "::error::/opt/zapi-docs is not owned by deploy_doc"; exit 1; }
-          sudo -n /usr/bin/docker version >/dev/null || { echo "::error::deploy_doc cannot run docker"; exit 1; }
-
-          if [ -f .env ]; then
-            echo "operator .env already exists; leaving it untouched"
-          else
-            umask 077
-            printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" > .env
-            chmod 600 .env
-            echo "created operator .env"
-          fi
-
-          stat -c '%a %U:%G %n' .env
-          cut -d= -f1 .env
-          REMOTE
+        run: bash ./scripts/inspect-server.sh
