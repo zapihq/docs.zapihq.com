@@ -40,8 +40,8 @@ the previously running tag and says whether that restore succeeded.
 The server has three persistent files, all in `${DEPLOY_PATH}` (default
 `/opt/zapi-docs`), named by owner:
 
-| File          | Owner    | Contents                                                      |
-| ------------- | -------- | ------------------------------------------------------------- |
+| File          | Owner    | Contents                                                       |
+| ------------- | -------- | -------------------------------------------------------------- |
 | `compose.yml` | CI       | Topology, re-synced from `docker/compose.yml` on every deploy. |
 | `.image.env`  | CI       | Deploy state: image tag and host port, no secrets.             |
 | `.env`        | Operator | Runtime environment, mode 600, never written by CI.            |
