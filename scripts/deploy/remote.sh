@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # The remote half of a deploy, streamed to the host by bundle.sh and run with
-# `bash -s`. The same file can be run directly from a checkout for a manual
-# rehearsal; it then sources the libraries bundle.sh would have inlined.
+# `bash -s`. Do not run it on its own: bundle.sh inlines the libraries and
+# writes the deploy group as shell assignments ahead of this program.
 #
-# The deploy group arrives in the environment, set by the workflow:
+# The deploy group arrives from bundle.sh:
 #   IMAGE_TAG, IMAGE_REPOSITORY, IMAGE_SOURCE, DEPLOY_PATH, PORT, GHCR_USER
 #
 # The staged registry token is already at ${DEPLOY_PATH}/.ghcr-token. It is
@@ -11,11 +11,8 @@
 set -Eeuo pipefail
 
 if ! declare -F wait_for_health >/dev/null || ! declare -F classify_registry_error >/dev/null; then
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # shellcheck source=../lib/health.sh
-  source "$script_dir/../lib/health.sh"
-  # shellcheck source=../lib/registry-error.sh
-  source "$script_dir/../lib/registry-error.sh"
+  printf '::error::remote.sh must be run through scripts/deploy/bundle.sh\n' >&2
+  exit 1
 fi
 
 fail() {

@@ -116,8 +116,7 @@ jobs:
       - name: Pull, replace, verify, prune
         run: |
           set -euo pipefail
-          bash ./scripts/deploy/bundle.sh | bash ./scripts/deploy/connection.sh run \
-            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' bash -s"
+          bash ./scripts/deploy/bundle.sh | bash ./scripts/deploy/connection.sh run "bash -s"
 
       - name: Report the live tag
         run: |
