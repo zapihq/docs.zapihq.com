@@ -23,9 +23,6 @@ concurrency:
   group: production-deploy
   cancel-in-progress: false
 
-env:
-  SSH_OPTIONS: "-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/runner/.ssh/known_hosts"
-
 jobs:
   ci:
     name: Checks
@@ -83,34 +80,7 @@ jobs:
       # tag always deploys that tag, and a dispatch carrying nothing deploys
       # this run's build.
       - name: Resolve image tag
-        run: |
-          set -euo pipefail
-
-          if [ -n "$REQUESTED_TAG" ]; then
-            tag="$REQUESTED_TAG"
-            echo "Deploy mode: rollback to an earlier published tag"
-          elif [ -n "$BUILT_TAG" ]; then
-            tag="$BUILT_TAG"
-            echo "Deploy mode: this run's build"
-          else
-            echo "::error::No image tag: pass image_tag, or deploy a commit that publishes one."
-            exit 1
-          fi
-
-          # Docker's tag grammar. Besides rejecting typos, this is what makes
-          # the input safe to carry into the remote shell and compose file.
-          if ! [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
-            echo "::error::Invalid image_tag '${tag}': expected a Docker tag such as sha-1a2b3c4."
-            exit 1
-          fi
-
-          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
-          {
-            echo "IMAGE_TAG=${tag}"
-            echo "IMAGE_REPOSITORY=${repository}"
-            echo "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
-          } >> "$GITHUB_ENV"
-          echo "::notice title=Deploy target::${repository}:${tag}"
+        run: bash ./scripts/deploy/resolve-image.sh
 
       - name: Validate deploy configuration
         env:
@@ -122,27 +92,15 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+        run: bash ./scripts/deploy/prepare-ssh.sh
 
       # The compose file is CI-owned and re-synced every deploy. The env file
       # beside it is operator-owned; nothing here writes or deletes it.
       - name: Sync compose file
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
-          scp -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -P "$SSH_PORT" \
-            docker/compose.yml "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/compose.yml"
+          bash ./scripts/deploy/connection.sh run "mkdir -p '$DEPLOY_PATH'"
+          bash ./scripts/deploy/connection.sh copy docker/compose.yml "$DEPLOY_PATH/compose.yml"
 
       # The registry token is staged as a file so it never appears in a
       # process list on the server. The remote script deletes it after login.
@@ -152,179 +110,14 @@ jobs:
           trap 'rm -f /tmp/ghcr-token' EXIT
           umask 077
           printf '%s' "$GHCR_TOKEN" > /tmp/ghcr-token
-          scp -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -P "$SSH_PORT" \
-            /tmp/ghcr-token "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/.ghcr-token"
+          bash ./scripts/deploy/connection.sh copy /tmp/ghcr-token "$DEPLOY_PATH/.ghcr-token"
           rm -f /tmp/ghcr-token
 
       - name: Pull, replace, verify, prune
         run: |
-          ssh -i ~/.ssh/id_ed25519 $SSH_OPTIONS -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' bash -s" <<'REMOTE'
-          set -Eeuo pipefail
-
-          fail() {
-            printf '::error::%s\n' "$*" >&2
-            exit 1
-          }
-
-          cd "$DEPLOY_PATH" || fail "missing deploy directory: $DEPLOY_PATH"
-
-          # deploy_doc is not in the docker group: that is an implicit root
-          # grant. The narrow sudoers rule allows exactly this binary instead.
-          DOCKER=(sudo -n /usr/bin/docker)
-
-          # The registry credential is the run's short-lived token, staged by
-          # the workflow as a file so it never reaches a process list. Remove it
-          # on every exit path, including failures before login.
-          TOKEN_FILE=.ghcr-token
-          logout() {
-            "${DOCKER[@]}" logout ghcr.io >/dev/null 2>&1 || true
-            rm -f "$TOKEN_FILE"
-          }
-          trap logout EXIT
-
-          [ -f compose.yml ] || fail "compose.yml was not synced"
-          [ -f .env ] || fail "missing operator-owned env file: $DEPLOY_PATH/.env"
-          [ -f "$TOKEN_FILE" ] || fail "missing staged registry token"
-
-          mode="$(stat -c '%a' .env)"
-          [ "$mode" = "600" ] || fail "$DEPLOY_PATH/.env must be mode 600, found $mode"
-
-          "${DOCKER[@]}" version >/dev/null 2>&1 ||
-            fail "deploy user cannot run docker; add the NOPASSWD /usr/bin/docker rule"
-
-          # Keep the values out of the compose interpolation environment: the
-          # file is the single source, so a rollback cannot be overridden by a
-          # stale exported tag.
-          TAG="$IMAGE_TAG"
-          HOST_PORT="$PORT"
-          unset IMAGE_TAG PORT
-
-          # sudo resets the environment, so the compose variables live in a
-          # CI-owned interpolation file rather than being passed through the
-          # shell. It carries no secrets.
-          write_image_env() {
-            printf 'IMAGE_TAG=%s\nPORT=%s\n' "$1" "$HOST_PORT" > .image.env
-          }
-          write_image_env "$TAG"
-          chmod 644 .image.env
-          COMPOSE=("${DOCKER[@]}" compose --env-file .image.env)
-
-          echo "Logging in to ghcr.io as $GHCR_USER"
-          "${DOCKER[@]}" login ghcr.io --username "$GHCR_USER" --password-stdin < "$TOKEN_FILE" >/dev/null ||
-            fail "registry login failed"
-          rm -f "$TOKEN_FILE"
-
-          # Record what is running before anything can change it, so a failed
-          # rollback can say what stayed live and restore the interpolation
-          # file to match.
-          previous_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs 2>/dev/null || true)"
-          previous_tag="${previous_image##*:}"
-          echo "Previous tag: ${previous_tag:-none}"
-
-          # A pull failure is the normal outcome of a mistyped or inaccessible
-          # tag. It must name the reason and leave the running container alone.
-          echo "Pulling $IMAGE_REPOSITORY:$TAG"
-          pull_ok=1
-          pull_output="$("${COMPOSE[@]}" pull 2>&1)" || pull_ok=0
-          printf '%s\n' "$pull_output"
-          if [ "$pull_ok" -eq 0 ]; then
-            pull_lower="$(printf '%s' "$pull_output" | tr '[:upper:]' '[:lower:]')"
-            if [ -n "$previous_tag" ]; then
-              write_image_env "$previous_tag"
-              outcome="the running container (${previous_tag}) is untouched"
-            else
-              # Leave no interpolation file naming a tag that does not exist.
-              rm -f .image.env
-              outcome="no container was running"
-            fi
-            case "$pull_lower" in
-              # GHCR says "denied" both for a tag that is missing from a
-              # private package and for a token that cannot read it, so the
-              # message must not claim which of the two it was.
-              *unauthorized* | *denied* | *forbidden*)
-                fail "cannot pull ${IMAGE_REPOSITORY}:${TAG}: the tag is missing or the token cannot read it; ${outcome}"
-                ;;
-              *"manifest unknown"* | *"not found"* | *"no such"*)
-                fail "image tag '${TAG}' is not published in ${IMAGE_REPOSITORY}; ${outcome}"
-                ;;
-              *)
-                fail "pull of ${IMAGE_REPOSITORY}:${TAG} failed; ${outcome}"
-                ;;
-            esac
-          fi
-
-          # Restore the tag that was running before this deploy. The reason a
-          # restore was skipped or failed is recorded for the caller, so a
-          # broken restore cannot hide behind the original error or claim to
-          # have restored something it did not.
-          restore_reason=""
-          restore_previous() {
-            if [ -z "$previous_tag" ]; then
-              restore_reason="no previous container to restore"
-              return 1
-            fi
-            if [ "$previous_tag" = "$TAG" ]; then
-              restore_reason="the previous container was already ${TAG}"
-              return 1
-            fi
-            echo "Restoring $previous_tag"
-            write_image_env "$previous_tag"
-            if "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
-              return 0
-            fi
-            restore_reason="restoring ${previous_tag} failed"
-            return 1
-          }
-
-          restore_on_failure() {
-            if restore_previous; then
-              fail "$1; restored $previous_tag"
-            fi
-            fail "$1; ${restore_reason}"
-          }
-
-          echo "Replacing the running container with $TAG"
-          if ! "${COMPOSE[@]}" up --detach --wait --wait-timeout 90; then
-            "${COMPOSE[@]}" logs --tail 100 app || true
-            restore_on_failure "new container unhealthy"
-          fi
-
-          # The tag in the log has to describe the container that is actually
-          # running, not the one that was requested.
-          running_image="$("${DOCKER[@]}" inspect --format '{{.Config.Image}}' zapi-docs)"
-          running_tag="${running_image##*:}"
-          if [ "$running_tag" != "$TAG" ]; then
-            restore_on_failure "container is running '${running_tag}', expected '${TAG}'"
-          fi
-
-          # Health is a contract, not a container-state detail: speak HTTP to it.
-          body=""
-          for _ in $(seq 1 30); do
-            body="$(curl --silent --max-time 5 "http://127.0.0.1:${HOST_PORT}/api/health" || true)"
-            if [ "$body" = '{"status":"ok"}' ]; then
-              break
-            fi
-            sleep 1
-          done
-          if [ "$body" != '{"status":"ok"}' ]; then
-            restore_on_failure "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
-          fi
-
-          echo "Pruning images older than seven days"
-          "${DOCKER[@]}" image prune --all --force \
-            --filter "until=168h" \
-            --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" >/dev/null || true
-
-          echo "Live tag: $TAG"
-          echo "Live image: $IMAGE_REPOSITORY:$TAG"
-          REMOTE
+          set -euo pipefail
+          bash ./scripts/deploy/bundle.sh | bash ./scripts/deploy/connection.sh run \
+            "IMAGE_TAG='$IMAGE_TAG' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' IMAGE_SOURCE='$IMAGE_SOURCE' DEPLOY_PATH='$DEPLOY_PATH' PORT='$PORT' GHCR_USER='$GHCR_USER' bash -s"
 
       - name: Report the live tag
         run: |
