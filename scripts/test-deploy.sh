@@ -95,15 +95,20 @@ base_env() {
     SSH_KNOWN_HOSTS=dummy-host-key
 }
 
-# Run the validation script with a clean environment, optionally omitting one
-# variable. All other required settings are present.
+# Run the validation script with a clean environment, optionally setting one
+# variable to an empty string. This mirrors the workflow, which exposes a
+# missing secret as an empty environment variable. All other required settings
+# are present.
 run_validate() {
-  local skip="${1:-}"
+  local empty="${1:-}"
   local assignments=()
   local key value
 
   while IFS='=' read -r key value; do
-    [ "$key" = "$skip" ] && continue
+    if [ "$key" = "$empty" ]; then
+      assignments+=("$key=")
+      continue
+    fi
     assignments+=("$key=$value")
   done < <(base_env)
 
@@ -157,10 +162,14 @@ prepare_server() {
   printf 'OPENROUTER_API_KEY=secret\n' > "$SERVER_DIR/.env"
   printf 'services:\n  app:\n    image: example\n' > "$SERVER_DIR/compose.yml"
   printf 'staged-token\n' > "$SERVER_DIR/.ghcr-token"
+  printf 'operator-note\n' > "$SERVER_DIR/keep.txt"
+  printf 'older-token\n' > "$SERVER_DIR/.ghcr-token.bak"
   chmod 600 "$SERVER_DIR/.env"
   cp "$SERVER_DIR/.env" "$TMP_DIR/env.before"
   cp "$SERVER_DIR/compose.yml" "$TMP_DIR/compose.before"
   cp "$SERVER_DIR/.image.env" "$TMP_DIR/image-env.before"
+  cp "$SERVER_DIR/keep.txt" "$TMP_DIR/keep.before"
+  cp "$SERVER_DIR/.ghcr-token.bak" "$TMP_DIR/token-bak.before"
 }
 
 # Run the cleanup script with a clean environment, optionally omitting one
@@ -201,6 +210,14 @@ assert_server_files_untouched() {
   fi
   if ! cmp -s "$TMP_DIR/image-env.before" "$SERVER_DIR/.image.env"; then
     fail_case "$label" ".image.env changed or was removed"
+    return 1
+  fi
+  if ! cmp -s "$TMP_DIR/keep.before" "$SERVER_DIR/keep.txt"; then
+    fail_case "$label" "keep.txt changed or was removed"
+    return 1
+  fi
+  if ! cmp -s "$TMP_DIR/token-bak.before" "$SERVER_DIR/.ghcr-token.bak"; then
+    fail_case "$label" ".ghcr-token.bak changed or was removed"
     return 1
   fi
 }

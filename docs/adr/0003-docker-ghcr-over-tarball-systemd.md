@@ -37,7 +37,8 @@ the previously running tag and says whether that restore succeeded.
 
 ## The server contract
 
-The server has three files, named by owner:
+The server has three files, all in `${DEPLOY_PATH}` (default
+`/opt/zapi-docs`), named by owner:
 
 | File          | Owner    | Contents                                                      |
 | ------------- | -------- | ------------------------------------------------------------- |
