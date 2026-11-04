@@ -14,12 +14,10 @@ set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for name in DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER; do
-  if [ -z "${!name:-}" ]; then
-    printf '::warning::Skipping staged registry token cleanup: missing %s\n' "$name" >&2
-    exit 0
-  fi
-done
+if [ -z "${DEPLOY_PATH:-}" ]; then
+  printf '::warning::Skipping staged registry token cleanup: missing DEPLOY_PATH\n' >&2
+  exit 0
+fi
 
 if [ ! -f ~/.ssh/id_ed25519 ]; then
   printf '::warning::Skipping staged registry token cleanup: the deploy key was never prepared\n' >&2
@@ -33,6 +31,6 @@ if bash "$script_dir/connection.sh" run "rm -f -- $quoted_path"; then
   exit 0
 fi
 
-printf '::warning::Could not remove the staged registry token from %s@%s:%s\n' \
-  "$SSH_USER" "$SSH_HOST" "$token_path" >&2
+printf '::warning::Could not remove the staged registry token at %s\n' \
+  "$token_path" >&2
 exit 0

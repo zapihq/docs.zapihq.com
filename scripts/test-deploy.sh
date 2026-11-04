@@ -406,8 +406,10 @@ for name in SSH_HOST SSH_PORT SSH_USER; do
     fail_case "connection: missing $name" "expected exit 2, got ${status}: $(tr '\n' ' ' <"$OUTPUT")"
   elif [ -s "$CALL_LOG" ]; then
     fail_case "connection: missing $name" "called a remote command: $(tr '\n' ' ' <"$CALL_LOG")"
-  elif ! grep -Fq "::error::Missing SSH configuration: $name" "$OUTPUT"; then
+  elif ! grep -Fq "SSH connection is not configured: missing $name" "$OUTPUT"; then
     fail_case "connection: missing $name" "missing error: $(tr '\n' ' ' <"$OUTPUT")"
+  elif grep -Fq '::error::' "$OUTPUT"; then
+    fail_case "connection: missing $name" "emitted an error annotation: $(tr '\n' ' ' <"$OUTPUT")"
   else
     pass "connection: missing $name exits 2 before any remote call"
   fi
@@ -980,6 +982,10 @@ for name in DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER; do
   fi
   if ! grep -Fq '::warning::' "$OUTPUT"; then
     fail_case "$label" "expected a warning: $(tr '\n' ' ' <"$OUTPUT")"
+    continue
+  fi
+  if grep -Fq '::error::' "$OUTPUT"; then
+    fail_case "$label" "cleanup emitted an error annotation: $(tr '\n' ' ' <"$OUTPUT")"
     continue
   fi
 

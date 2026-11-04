@@ -28,7 +28,7 @@ require_settings() {
   local name
   for name in SSH_HOST SSH_PORT SSH_USER; do
     if [ -z "${!name:-}" ]; then
-      printf '::error::Missing SSH configuration: %s\n' "$name" >&2
+      printf 'SSH connection is not configured: missing %s\n' "$name" >&2
       exit 2
     fi
   done
