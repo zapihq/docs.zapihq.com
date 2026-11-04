@@ -132,14 +132,16 @@ case " \$* " in
 esac
 EOF
 
+  # curl writes the body, then --write-out appends the status on its own line.
   cat > "$STUB_DIR/curl" <<EOF
 #!/usr/bin/env bash
 printf 'curl %s\n' "\$*" >> "$CALL_LOG"
 if [ -n "\${STUB_HEALTH_BODY+x}" ]; then
   printf '%s' "\$STUB_HEALTH_BODY"
 else
-  printf '%s' '{"status":"ok"}'
+  printf '%s' '$HEALTH_BODY'
 fi
+printf '\n%s' "\${STUB_HEALTH_STATUS:-200}"
 exit 0
 EOF
 
@@ -490,13 +492,29 @@ prepare_server() {
 
 reset_fixture
 if ! body="$(PATH="$STUB_DIR:$PATH" wait_for_health 3002 3)"; then
-  fail_case "health: matching body" "expected success, got '${body}'"
-elif [ "$body" != '{"status":"ok"}' ]; then
-  fail_case "health: matching body" "returned '${body}'"
-elif ! grep -Fq 'curl --silent --max-time 5 http://127.0.0.1:3002/api/health' "$CALL_LOG"; then
-  fail_case "health: matching body" "probe was: $(tr '\n' ' ' <"$CALL_LOG")"
+  fail_case "health: matching body at 200" "expected success, got '${body}'"
+elif [ "$body" != "$HEALTH_BODY" ]; then
+  fail_case "health: matching body at 200" "returned '${body}'"
+elif ! grep -Fq 'curl --silent --max-time 5 --write-out' "$CALL_LOG"; then
+  fail_case "health: matching body at 200" "probe was: $(tr '\n' ' ' <"$CALL_LOG")"
+elif ! grep -Fq 'http://127.0.0.1:3002/api/health' "$CALL_LOG"; then
+  fail_case "health: matching body at 200" "probe was: $(tr '\n' ' ' <"$CALL_LOG")"
+elif [ "$(grep -c '^curl ' "$CALL_LOG")" != "1" ]; then
+  fail_case "health: matching body at 200" "expected one request, saw $(grep -c '^curl ' "$CALL_LOG")"
 else
   pass "health: a matching body returns ok for the requested port"
+fi
+
+# The status is part of the contract: a 204 with the right body is not healthy.
+reset_fixture
+if body="$(STUB_HEALTH_STATUS=204 PATH="$STUB_DIR:$PATH" wait_for_health 3002 3)"; then
+  fail_case "health: matching body with a non-200 status" "expected failure"
+elif [ "$body" != "$HEALTH_BODY" ]; then
+  fail_case "health: matching body with a non-200 status" "returned '${body}', expected the last body"
+elif [ "$(grep -c '^curl ' "$CALL_LOG")" != "3" ]; then
+  fail_case "health: matching body with a non-200 status" "expected 3 attempts, saw $(grep -c '^curl ' "$CALL_LOG")"
+else
+  pass "health: a matching body with a non-200 status still fails"
 fi
 
 reset_fixture
@@ -517,7 +535,7 @@ fi
 reset_stub_state() {
   unset STUB_PREVIOUS_IMAGE STUB_RUNNING_IMAGE STUB_PULL_OUTPUT STUB_PULL_FAIL \
     STUB_UP_FAIL_FIRST STUB_DOCKER_VERSION_FAIL STUB_LOGIN_FAIL STUB_ENV_MODE \
-    STUB_HEALTH_BODY
+    STUB_HEALTH_BODY STUB_HEALTH_STATUS
 }
 
 run_remote() {
@@ -540,6 +558,7 @@ run_remote() {
     "STUB_DOCKER_VERSION_FAIL=${STUB_DOCKER_VERSION_FAIL:-0}"
     "STUB_LOGIN_FAIL=${STUB_LOGIN_FAIL:-0}"
     "STUB_ENV_MODE=${STUB_ENV_MODE:-600}"
+    "STUB_HEALTH_STATUS=${STUB_HEALTH_STATUS:-200}"
   )
   if [ -n "${STUB_HEALTH_BODY+x}" ]; then
     assignments+=("STUB_HEALTH_BODY=$STUB_HEALTH_BODY")
@@ -592,7 +611,9 @@ elif ! assert_image_env_tag "remote: successful deploy" "sha-1a2b3c4"; then
   :
 elif ! assert_token_removed "remote: successful deploy"; then
   :
-elif ! grep -Fq 'curl --silent --max-time 5 http://127.0.0.1:3002/api/health' "$CALL_LOG"; then
+elif ! grep -Fq 'curl --silent --max-time 5 --write-out' "$CALL_LOG"; then
+  fail_case "remote: successful deploy" "health probe was: $(tr '\n' ' ' <"$CALL_LOG")"
+elif ! grep -Fq 'http://127.0.0.1:3002/api/health' "$CALL_LOG"; then
   fail_case "remote: successful deploy" "health probe was: $(tr '\n' ' ' <"$CALL_LOG")"
 elif ! grep -Fq 'docker logout ghcr.io' "$CALL_LOG"; then
   fail_case "remote: successful deploy" "registry session was not logged out"
@@ -705,7 +726,7 @@ STUB_HEALTH_BODY='{"status":"degraded"}'
 if run_remote; then
   fail_case "remote: wrong health body" "expected a non-zero exit"
 elif ! assert_remote_output "remote: wrong health body" \
-  "GET /api/health returned '{\"status\":\"degraded\"}', expected '{\"status\":\"ok\"}'; restored sha-old"; then
+  "GET /api/health returned '{\"status\":\"degraded\"}', expected '${HEALTH_BODY}'; restored sha-old"; then
   :
 elif ! assert_image_env_tag "remote: wrong health body" "sha-old"; then
   :

@@ -21,18 +21,23 @@ health_url() {
 }
 
 # wait_for_health <port> <attempts>
-# Prints the last body it saw and returns 0 only when that body matched. The
-# probe is quiet: a retry loop must not fill the log with curl's connection
-# errors while the application is still starting.
+# Prints the last body it saw and returns 0 only when the endpoint answered
+# HTTP 200 with exactly the contract body. curl's stderr is left alone: a
+# refused connection is a diagnostic the runbook relies on, not noise to hide.
 wait_for_health() {
   local port="$1"
   local attempts="$2"
-  local body=""
+  local response status body=""
   local _
 
   for _ in $(seq 1 "$attempts"); do
-    body="$(curl --silent --max-time 5 "$(health_url "$port")" 2>/dev/null || true)"
-    if [ "$body" = "$HEALTH_BODY" ]; then
+    # One request per attempt: curl appends the status after the body so the
+    # caller still gets the last body for its error message.
+    response="$(curl --silent --max-time 5 \
+      --write-out '\n%{http_code}' "$(health_url "$port")" || true)"
+    status="${response##*$'\n'}"
+    body="${response%$'\n'*}"
+    if [ "$status" = "200" ] && [ "$body" = "$HEALTH_BODY" ]; then
       printf '%s' "$body"
       return 0
     fi
