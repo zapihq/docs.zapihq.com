@@ -152,7 +152,7 @@ fi
 
 # Health is a contract, not a container-state detail: speak HTTP to it.
 if ! body="$(wait_for_health "$HOST_PORT" 30)"; then
-  restore_on_failure "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+  restore_on_failure "GET ${HEALTH_PATH} returned '${body}', expected '${HEALTH_BODY}'"
 fi
 
 echo "Pruning images older than seven days"
