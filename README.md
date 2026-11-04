@@ -34,9 +34,10 @@ runtime.
 
 CI builds the image and exercises it on every pull request with
 `scripts/check-container.sh` (Docker, bash, and curl). CI also runs
-`scripts/test-deploy.sh`, the stubbed harness for deploy configuration and
-token cleanup (bash only, no host or registry). Run the same container checks
-against a local image:
+`scripts/test-deploy.sh`, the bash-only stubbed harness for the deploy shell
+boundary: configuration validation, image resolution, the SSH/SCP seam, the
+health probe, the remote deploy program, and token cleanup. It needs no host,
+registry, or container. Run the same container checks against a local image:
 
 ```bash
 bash scripts/check-container.sh zapi-docs

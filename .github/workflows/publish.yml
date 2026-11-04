@@ -120,7 +120,7 @@ jobs:
 
           # The deploy and the publish check classify registry failures with
           # the same vocabulary.
-          # shellcheck source=../../scripts/lib/registry-error.sh
+          # shellcheck source=scripts/lib/registry-error.sh
           source scripts/lib/registry-error.sh
 
           # 1. An anonymous pull must fail. A credential-less attempt is only
