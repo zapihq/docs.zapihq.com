@@ -12,6 +12,8 @@
 # staged file.
 set -uo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 for name in DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER; do
   if [ -z "${!name:-}" ]; then
     printf '::warning::Skipping staged registry token cleanup: missing %s\n' "$name" >&2
@@ -27,8 +29,7 @@ fi
 token_path="${DEPLOY_PATH}/.ghcr-token"
 quoted_path="$(printf '%q' "$token_path")"
 
-if ssh -i ~/.ssh/id_ed25519 ${SSH_OPTIONS:-} -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-  "rm -f -- $quoted_path"; then
+if bash "$script_dir/connection.sh" run "rm -f -- $quoted_path"; then
   exit 0
 fi
 
