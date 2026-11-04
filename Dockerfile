@@ -56,9 +56,12 @@ COPY --from=builder --chown=node:node /app/public ./public
 USER node
 EXPOSE 3000
 
-# Health contract: 200 with {"status":"ok"}. Keep this in sync with
-# app/api/health/route.ts; it is intentionally dependency-free so it cannot
-# fail on an upstream call.
+# Health contract: 200 with {"status":"ok"} from /api/health. The contract and
+# its probe live in scripts/lib/health.sh, used by the container seam check and
+# the deploy job. This healthcheck cannot source that file: the runtime layer
+# carries only the standalone server, no repository scripts, so it stays a
+# dependency-free node one-liner that must be kept in sync by hand. It is
+# intentionally dependency-free so it cannot fail on an upstream call.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/health').then(async (res) => { const body = await res.json().catch(() => null); process.exit(res.status === 200 && body && body.status === 'ok' ? 0 : 1); }).catch(() => process.exit(1));"]
 
