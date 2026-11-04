@@ -29,6 +29,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # The deploy scripts are a shell boundary. Stubs prove configuration
+      # validation and token cleanup without a host or registry.
+      - name: Test deploy scripts
+        run: bash ./scripts/test-deploy.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
