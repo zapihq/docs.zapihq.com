@@ -2,22 +2,24 @@
 
 Production is a private container image running under docker compose on the
 server, behind the existing host nginx. CI is the only deploy path. This page
-is the runbook for a normal deploy, a rollback, a fresh host, and failure
-triage. The decision behind it is in
-`docs/adr/0003-docker-ghcr-over-tarball-systemd.md`.
+is the runbook for a normal deploy, a rollback, a fresh host, the deploy
+account's privilege, and failure triage. The decision behind it is in
+`docs/adr/0003-docker-ghcr-over-tarball-systemd.md`, which records the retired
+cutover and teardown as history.
 
 ## What is running
 
-| Piece           | Where it lives                                                                                                                                                                                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Edge            | Host nginx. Terminates TLS with the wildcard certificate, enforces the Basic Auth gate, and proxies `docs.zapihq.com` to `127.0.0.1:3002`. Its configuration and certificate renewal are unchanged by this deploy.                                                       |
-| Application     | Container `zapi-docs`, from the private image `ghcr.io/zapihq/docs.zapihq.com:<tag>`. It listens on 3000 in the container, publishes only on loopback `127.0.0.1:3002`, runs as the non-root `node` user, restarts unless stopped, and caps json-file logs at 10 MB × 3. |
-| Compose file    | `/opt/zapi-docs/compose.yml`. CI owns it and overwrites it on every deploy.                                                                                                                                                                                              |
-| Image variables | `/opt/zapi-docs/.image.env`, written by CI on every deploy. It carries `IMAGE_TAG` and `PORT`, no secrets.                                                                                                                                                               |
-| Runtime secrets | `/opt/zapi-docs/.env`, operator-owned, mode 600. CI never writes it.                                                                                                                                                                                                     |
-| Registry        | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference. Retention is described under [Normal deploy](#normal-deploy).                                                                              |
-| Deploy account  | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group.                                                                                                                                           |
-| Workflow        | `.github/workflows/deploy.yml`, calling `ci.yml` and `publish.yml` on a normal deploy.                                                                                                                                                                                   |
+| Piece               | Where it lives                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Edge                | Host nginx. Terminates TLS with the wildcard certificate, enforces the Basic Auth gate, and proxies `docs.zapihq.com` to `127.0.0.1:3002`. Its configuration and certificate renewal are unchanged by this deploy.                                                       |
+| Application         | Container `zapi-docs`, from the private image `ghcr.io/zapihq/docs.zapihq.com:<tag>`. It listens on 3000 in the container, publishes only on loopback `127.0.0.1:3002`, runs as the non-root `node` user, restarts unless stopped, and caps json-file logs at 10 MB × 3. |
+| Compose file        | `/opt/zapi-docs/compose.yml`, CI-owned topology. CI overwrites it on every deploy from `docker/compose.yml`.                                                                                                                                                             |
+| Deploy state        | `/opt/zapi-docs/.image.env`, CI-written on every deploy. It carries the image tag and host port (`IMAGE_TAG`, `PORT`), no secrets.                                                                                                                                       |
+| Runtime environment | `/opt/zapi-docs/.env`, operator-owned, mode 600. CI never writes it; it is the only place the runtime secrets live on the server.                                                                                                                                        |
+| Registry token      | `${DEPLOY_PATH}/.ghcr-token`, transient and owned by the deploy run. The remote trap and the always-run cleanup remove it; it is never written to `.env` or `compose.yml`.                                                                                               |
+| Registry            | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference. Retention is described under [Normal deploy](#normal-deploy).                                                                              |
+| Deploy account      | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group.                                                                                                                                           |
+| Workflow            | `.github/workflows/deploy.yml`, calling `ci.yml` and `publish.yml` on a normal deploy.                                                                                                                                                                                   |
 
 The site is Basic Auth gated at nginx. `curl -I https://docs.zapihq.com`
 returning `401` with `WWW-Authenticate: Basic` is normal. The real health check
@@ -39,20 +41,42 @@ keeping `latest`. Only versions whose every tag is `sha-*` are deleted; a
 version with a manual tag is left alone. Untagged versions older than the
 oldest kept image are deleted too, so the attestation manifests buildx attaches
 to a pruned image do not pile up. The prune is best-effort: if the registry
-rejects it, that step goes red but the deploy still runs. The deploy job then:
+rejects it, that step goes red but the deploy still runs. `latest` moves only
+when a new immutable tag is built; re-running the workflow for the same commit
+skips the build and leaves `latest` where it is.
 
-1. Resolves the tag, validates it against Docker's tag grammar, and checks the
-   required environment variables and secrets.
-2. Copies `docker/compose.yml` to `/opt/zapi-docs/compose.yml`. CI never
-   touches the `.env` beside it.
-3. Stages the run's short-lived `GITHUB_TOKEN` as a file, logs in to `ghcr.io`,
-   and records the tag of the container that is currently running.
-4. Writes `.image.env`, pulls the pinned tag, and runs
-   `docker compose up --detach --wait --wait-timeout 90`.
-5. Checks that the running container's image is the requested tag and that
-   `GET http://127.0.0.1:3002/api/health` returns `{"status":"ok"}`.
-6. Prunes images carrying this repository's source label that are older than
-   168 hours, logs out, and prints `Live tag: <tag>`.
+The deploy job runs these steps:
+
+1. **Resolve image tag** — resolves the tag and validates it against Docker's
+   tag grammar.
+2. **Validate deploy configuration** — checks `IMAGE_TAG`, `IMAGE_REPOSITORY`,
+   `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, and
+   `SSH_KNOWN_HOSTS` before any SSH, scp, or registry call. The workflow
+   defaults `PORT` to 3002 before this runs, so it is not required from the
+   operator; set it only when nginx uses another port.
+3. **Prepare SSH credentials** — writes the deploy key and the known-hosts
+   file.
+4. **Sync compose file** — copies `docker/compose.yml` to
+   `/opt/zapi-docs/compose.yml`. CI never touches the `.env` beside it.
+5. **Stage registry token** — copies the run's short-lived `GITHUB_TOKEN` to
+   `${DEPLOY_PATH}/.ghcr-token` so it never appears in a process list. This
+   step does not log in to the registry.
+6. **Pull, replace, verify, prune** — logs in to `ghcr.io` with the staged
+   token, records the tag of the container that is currently running, writes
+   `.image.env`, pulls the pinned tag, and runs
+   `docker compose up --detach --wait --wait-timeout 90`. It checks that the
+   running container's image is the requested tag and that
+   `GET http://127.0.0.1:3002/api/health` returns `{"status":"ok"}`, prunes
+   images carrying this repository's source label that are older than 168
+   hours, logs out, and prints `Live tag: <tag>`.
+7. **Report the live tag** — writes the **Live tag** notice and the run
+   summary.
+
+A cancelled or failed run still attempts **Remove staged registry token** last,
+subject to the job timeout. It removes only `${DEPLOY_PATH}/.ghcr-token` over
+SSH and warns instead of failing when the host is unreachable, so it cannot
+replace the real failure and cannot touch `.env`, `compose.yml`, or
+`.image.env`.
 
 A successful run ends with `Live tag: sha-…` in the log and a **Live tag**
 notice on the run. There is no manual pull or restart step. Re-running the same
@@ -69,6 +93,9 @@ ssh deploy_doc@<host> \
   'sudo -n /usr/bin/docker ps --filter name=zapi-docs --format "{{.Image}}  {{.Status}}"'
 # ghcr.io/zapihq/docs.zapihq.com:sha-…  Up … (healthy)
 ```
+
+These examples use the default host port 3002. Substitute `PORT` if the
+production environment sets a different host port.
 
 ## Rollback
 
@@ -108,7 +135,9 @@ deploy the unfixed code again.
 A rebuilt host starts from a clean Ubuntu server; there is no older deploy
 layout to migrate. Do the host setup once, as root:
 
-1. Install Docker with the compose plugin.
+1. Install Docker with the compose plugin, plus `curl`. The deploy's health
+   probe runs `curl` on the host, so a rebuilt host without it fails at the
+   last step.
 2. Create the deploy account and install the public half of the deploy key:
 
    ```bash
@@ -119,15 +148,16 @@ layout to migrate. Do the host setup once, as root:
    ```
 
 3. Create `/opt/zapi-docs` and give `deploy_doc` write access. CI re-syncs
-   `compose.yml` and `.image.env` into it on every deploy.
+   `compose.yml` into it and writes `.image.env` beside it on every deploy.
 4. Create `/opt/zapi-docs/.env` with the runtime secrets, owned so compose can
    read it and mode 600; CI never writes it.
 5. Install the sudoers rule below and point nginx's `docs.zapihq.com` block at
    `127.0.0.1:3002`. Leave the Basic Auth gate and wildcard certificate at the
    edge.
-6. In the `production` environment, keep `DEPLOY_PATH=/opt/zapi-docs`,
-   `PORT=3002`, and the `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`,
-   and `SSH_KNOWN_HOSTS` values.
+6. In the `production` environment, set `DEPLOY_PATH=/opt/zapi-docs`, plus
+   `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, and
+   `SSH_KNOWN_HOSTS`. `PORT` is optional and defaults to 3002; set it only
+   when nginx proxies to a different port.
 
 Then run the **Deploy** workflow as in [Normal deploy](#normal-deploy). It
 writes `compose.yml` and `.image.env` to `/opt/zapi-docs`, pulls the image,
@@ -169,22 +199,24 @@ rule.
 
 The workflow fails at a named stage. Start there before reading the stack.
 
-| Stage                           | What to check                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checks or publish               | No deploy ran. Fix the commit; a red check must never reach production.                                                                                                                                                                                                                                                                                                   |
-| Validate deploy configuration   | The `production` environment is missing a variable or secret. Required: `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `PORT`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`. `GITHUB_TOKEN` is automatic.                                                                                                                                                                     |
-| SSH or sync compose             | Host, port, user, key, and known-hosts. Confirm the deploy key still authenticates as `deploy_doc`, that port 22 is reachable, that `/opt/zapi-docs` is writable, and that `/home/deploy_doc/.ssh/authorized_keys` holds the deploy key.                                                                                                                                  |
-| Registry login or pull          | `image_tag` is a Docker tag, not a digest or branch. `not published` means the tag does not exist; `missing or the token cannot read it` deliberately covers both a missing tag and an unreadable private package. The running container is left alone.                                                                                                                   |
-| Prune old package versions      | The red step does not block the deploy. `::warning::Could not delete package version …` means the REST delete failed; a later publish that builds a new version retries it. If every publish goes red here, confirm the job still has `packages: write` and that the GHCR package is still linked to this repository.                                                     |
-| Missing `.env` or mode          | `/opt/zapi-docs/.env` must exist and be mode 600. Fix ownership and mode. Never let CI write it.                                                                                                                                                                                                                                                                          |
-| `deploy user cannot run docker` | The sudoers rule is missing or wrong. Install it as root and test `sudo -n /usr/bin/docker version`.                                                                                                                                                                                                                                                                      |
-| Compose up or unhealthy         | Read the job's last 100 container lines, then reproduce with `cd /opt/zapi-docs && sudo -n /usr/bin/docker compose --env-file .image.env logs --tail 100 app`. Check the image health status, the env keys, and whether something else owns 3002. The job attempts to restore the previous tag; if it says the restore failed, dispatch a rollback for the last good tag. |
-| Health body mismatch            | Check `curl -sS http://127.0.0.1:3002/api/health`, `docker inspect --format '{{.State.Health.Status}}' zapi-docs`, and the image tag that is actually running. nginx is not in this path.                                                                                                                                                                                 |
-| Deploy green but public `502`   | The app is healthy but the host edge is not reaching it. Check the listener on 3002 with `ss -lntp`, the nginx upstream, `sudo nginx -t`, and nginx's error log. Do not restart nginx unless a config change requires it; the certificate renewal path is outside this deploy.                                                                                            |
-| Deploy green but public `401`   | Expected. The Basic Auth gate is at nginx. The deploy verifies loopback health, not the gated public response.                                                                                                                                                                                                                                                            |
-| Run cancelled or queued         | The `production-deploy` concurrency group never cancels a deploy in progress. Let the running one finish, then re-run or dispatch the tag you want.                                                                                                                                                                                                                       |
+| Stage                                       | What to check                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checks or publish                           | No deploy ran. Fix the commit; a red check must never reach production.                                                                                                                                                                                                                                                                                                   |
+| Validate deploy configuration               | The `production` environment is missing a variable or secret. Required: `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`. `PORT` is optional and defaults to 3002. `GITHUB_TOKEN` is automatic.                                                                                                                                    |
+| Prepare SSH credentials / Sync compose file | Host, port, user, key, and known-hosts. Confirm the deploy key still authenticates as `deploy_doc`, that port 22 is reachable, that `/opt/zapi-docs` is writable, and that `/home/deploy_doc/.ssh/authorized_keys` holds the deploy key.                                                                                                                                  |
+| Stage registry token                        | If the `scp` of `.ghcr-token` fails, check that `/opt/zapi-docs` is writable by `deploy_doc`. The always-run cleanup removes any partial file.                                                                                                                                                                                                                            |
+| Pull, replace, verify, prune                | The registry login and pull happen here. `image_tag` is a Docker tag, not a digest or branch. `not published` means the tag does not exist; `missing or the token cannot read it` deliberately covers both a missing tag and an unreadable private package. The running container is left alone.                                                                          |
+| Prune old package versions                  | The red step does not block the deploy. `::warning::Could not delete package version …` means the REST delete failed; a later publish that builds a new version retries it. If every publish goes red here, confirm the job still has `packages: write` and that the GHCR package is still linked to this repository.                                                     |
+| Missing `.env` or mode                      | `/opt/zapi-docs/.env` must exist and be mode 600. Fix ownership and mode. Never let CI write it.                                                                                                                                                                                                                                                                          |
+| `deploy user cannot run docker`             | The sudoers rule is missing or wrong. Install it as root and test `sudo -n /usr/bin/docker version`.                                                                                                                                                                                                                                                                      |
+| Compose up or unhealthy                     | Read the job's last 100 container lines, then reproduce with `cd /opt/zapi-docs && sudo -n /usr/bin/docker compose --env-file .image.env logs --tail 100 app`. Check the image health status, the env keys, and whether something else owns 3002. The job attempts to restore the previous tag; if it says the restore failed, dispatch a rollback for the last good tag. |
+| Health body mismatch                        | Check `curl -sS http://127.0.0.1:3002/api/health`, `docker inspect --format '{{.State.Health.Status}}' zapi-docs`, and the image tag that is actually running. nginx is not in this path.                                                                                                                                                                                 |
+| Deploy green but public `502`               | The app is healthy but the host edge is not reaching it. Check the listener on 3002 with `ss -lntp`, the nginx upstream, `sudo nginx -t`, and nginx's error log. Do not restart nginx unless a config change requires it; the certificate renewal path is outside this deploy.                                                                                            |
+| Deploy green but public `401`               | Expected. The Basic Auth gate is at nginx. The deploy verifies loopback health, not the gated public response.                                                                                                                                                                                                                                                            |
+| Run cancelled or queued                     | The `production-deploy` concurrency group never cancels a deploy in progress. Let the running one finish, then re-run or dispatch the tag you want. A failed or cancelled run still attempts to remove the staged token; if that step warns, delete `/opt/zapi-docs/.ghcr-token` by hand.                                                                                 |
 
-Useful read-only commands:
+Useful read-only commands (these also assume the default host port 3002;
+substitute `PORT` if production sets a different host port):
 
 ```bash
 ssh deploy_doc@<host> 'sudo -n /usr/bin/docker inspect --format "{{.Config.Image}} {{.State.Health.Status}}" zapi-docs'

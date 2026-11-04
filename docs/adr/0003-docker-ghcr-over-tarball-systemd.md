@@ -35,15 +35,57 @@ pulls that tag, and reuses the normal deploy path. A failed pull leaves the
 running container alone. If the new container is unhealthy, the deploy restores
 the previously running tag and says whether that restore succeeded.
 
+## The server contract
+
+The server has three persistent files, all in `${DEPLOY_PATH}` (default
+`/opt/zapi-docs`), named by owner:
+
+| File          | Owner    | Contents                                                       |
+| ------------- | -------- | -------------------------------------------------------------- |
+| `compose.yml` | CI       | Topology, re-synced from `docker/compose.yml` on every deploy. |
+| `.image.env`  | CI       | Deploy state: image tag and host port, no secrets.             |
+| `.env`        | Operator | Runtime environment, mode 600, never written by CI.            |
+
+The staged registry token is a fourth, transient file at
+`${DEPLOY_PATH}/.ghcr-token`, owned by the deploy run. The remote trap and the
+always-run cleanup remove it, and it is never written to `.env` or
+`compose.yml`.
+
+Deploy state is separate for two reasons. CI must not write the runtime
+environment: the secrets are hand-managed on the host, and a deploy has no
+business rewriting them. And a compose file with a baked tag would no longer
+match the versioned file in the repository, so the tag and host port are
+interpolated from `.image.env` beside the synced, reviewable `compose.yml`.
+
+## Verification
+
+Deploy health is verified through the nginx upstream on
+`http://127.0.0.1:3002/api/health`, from the server itself. The public URL is
+Basic Auth gated, so CI does not probe it; a `401` there is the expected edge
+behaviour, not a deploy signal. A rollback is verified the same way.
+
+## Runbook scope
+
+`docs/agents/deploy.md` describes only the current container path: normal
+deploy, rollback, fresh host, the deploy account's privilege, and failure
+triage. The retired cutover and teardown procedure is historical, not a
+runbook step; it is recorded below as history, and the runbook carries one
+pointer to it.
+
+## Publishing and `latest`
+
+`latest` moves only when a new immutable tag is built. A same-commit re-run
+finds the `sha-*` tag already published, skips the build, and leaves `latest`
+where it is. The deployed reference is always the immutable tag.
+
 ## Consequences
 
 - "What is production running?" is answered by an image tag, and the image
   records its source revision in the `org.opencontainers.image.revision` label.
 - The same image runs on a laptop and on the server, so a local run says
   something about the shipped artifact.
-- The production topology is in the repository as `docker/compose.yml`. The
-  server has three files: CI-owned `compose.yml`, CI-written `.image.env`
-  (tag and host port, no secrets), and operator-owned `.env`.
+- The production topology is in the repository as `docker/compose.yml`; the
+  three-file server contract is described above.
 - Deploys are idempotent. Re-running a deploy for the same tag does not rebuild
   the image or recreate the container when nothing changed.
 - A failed pull or unhealthy container is a red deploy, not a silent 502. The
@@ -99,3 +141,14 @@ group is equivalent to root on the host, because Docker can mount the host
 filesystem. A single sudoers rule for `/usr/bin/docker` is still root-equivalent
 in practice, but it is explicit, auditable, and does not quietly grant every
 other docker command to the account.
+
+## Appendix: retired cutover and teardown (historical)
+
+The cutover was a one-off with a real outage: systemd already owned port
+3002, so the unit was stopped and disabled before compose took the port.
+Teardown removed the unit and `/var/www/zapi-docs` only after a container
+deploy and a rollback had both been proven, and the retired GitHub
+configuration was removed. The old environment file was checked for any keys
+still needed before it was deleted. These instructions are deliberately not
+carried forward and are not replayed on a host that already runs the
+container.

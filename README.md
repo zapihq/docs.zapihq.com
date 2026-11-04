@@ -33,7 +33,9 @@ also need `OPENROUTER_API_KEY`, `GITHUB_APP_ID`, and `GITHUB_APP_PRIVATE_KEY` at
 runtime.
 
 CI builds the image and exercises it on every pull request with
-`scripts/check-container.sh` (Docker, bash, and curl). Run the same checks
+`scripts/check-container.sh` (Docker, bash, and curl). CI also runs
+`scripts/test-deploy.sh`, the stubbed harness for deploy configuration and
+token cleanup (bash only, no host or registry). Run the same container checks
 against a local image:
 
 ```bash

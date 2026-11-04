@@ -18,7 +18,7 @@ env:
 
 jobs:
   quality:
-    name: Lint, Typecheck And Container
+    name: Lint, Typecheck, Tests And Container
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -28,6 +28,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # The deploy scripts are a shell boundary. Stubs prove configuration
+      # validation and token cleanup without a host or registry.
+      - name: Test deploy scripts
+        run: bash ./scripts/test-deploy.sh
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -43,7 +48,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Add tests here when a test suite exists
       - name: Lint
         run: pnpm lint
 

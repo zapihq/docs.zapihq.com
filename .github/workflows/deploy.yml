@@ -113,15 +113,10 @@ jobs:
           echo "::notice title=Deploy target::${repository}:${tag}"
 
       - name: Validate deploy configuration
-        run: |
-          set -euo pipefail
-          for name in IMAGE_TAG IMAGE_REPOSITORY DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER PORT; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing deploy configuration: ${name}"
-              exit 1
-            fi
-          done
-          echo "Deploying ${IMAGE_REPOSITORY}:${IMAGE_TAG} to ${DEPLOY_PATH}"
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: bash ./scripts/deploy/validate-config.sh
 
       - name: Prepare SSH credentials
         env:
@@ -339,3 +334,11 @@ jobs:
             echo ""
             echo "\`${IMAGE_REPOSITORY}:${IMAGE_TAG}\` is live and healthy."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # A cancelled or failed run must not leave the staged token behind. This
+      # runs after every outcome, including cancellation, and is best-effort:
+      # it warns and exits 0 so cleanup cannot replace the real conclusion.
+      - name: Remove staged registry token
+        if: ${{ always() }}
+        continue-on-error: true
+        run: bash ./scripts/deploy/cleanup-token.sh
