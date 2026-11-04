@@ -5,6 +5,10 @@
 # Run locally with `bash scripts/check-container.sh <image> [port]`.
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/health.sh
+source "$script_dir/lib/health.sh"
+
 IMAGE="${1:?usage: check-container.sh <image> [port]}"
 PORT="${2:-3000}"
 CONTAINER="zapi-docs-check-$$"
@@ -28,16 +32,8 @@ docker run --detach --name "$CONTAINER" \
   "$IMAGE" >/dev/null
 
 # 1. Health returns 200 with the documented body.
-body=""
-for _ in $(seq 1 60); do
-  body="$(curl --silent --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || true)"
-  if [ "$body" = '{"status":"ok"}' ]; then
-    break
-  fi
-  sleep 1
-done
-if [ "$body" != '{"status":"ok"}' ]; then
-  fail "GET /api/health returned '${body}', expected '{\"status\":\"ok\"}'"
+if ! body="$(wait_for_health "$PORT" 60)"; then
+  fail "GET ${HEALTH_PATH} returned '${body}', expected '${HEALTH_BODY}'"
 fi
 
 # 2. The image's own healthcheck reaches healthy.

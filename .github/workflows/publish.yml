@@ -6,9 +6,6 @@ name: Publish Image
 on:
   workflow_call:
     outputs:
-      image:
-        description: Image repository without a tag
-        value: ${{ jobs.build-push.outputs.image }}
       image_tag:
         description: Immutable tag published by this run
         value: ${{ jobs.build-push.outputs.image_tag }}
@@ -30,7 +27,6 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.image.outputs.name }}
       image_tag: ${{ steps.image.outputs.sha_tag }}
     env:
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
@@ -122,6 +118,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The deploy and the publish check classify registry failures with
+          # the same vocabulary.
+          # shellcheck source=scripts/lib/registry-error.sh
+          source scripts/lib/registry-error.sh
+
           # 1. An anonymous pull must fail. A credential-less attempt is only
           #    able to pull when the package is public, so success here means
           #    the package visibility drifted and the job has to go red.
@@ -130,7 +131,7 @@ jobs:
             echo "::error::Anonymous pull of ${IMAGE}:${SHA_TAG} succeeded; the package must be private."
             exit 1
           fi
-          if ! grep -Eqi 'unauthorized|denied|forbidden' <<<"$anonymous_output"; then
+          if [ "$(classify_registry_error "$anonymous_output")" != "auth" ]; then
             printf '%s\n' "$anonymous_output" >&2
             echo "::error::Anonymous pull failed for a reason other than authentication."
             exit 1
