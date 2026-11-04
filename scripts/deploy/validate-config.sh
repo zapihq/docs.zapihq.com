@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validate the deploy job's configuration before any SSH, SCP, or registry
-# call. PORT is defaulted by the workflow before this runs, so an empty PORT
-# here is a real configuration error.
+# call. The workflow defaults PORT to 3002 before this runs, so PORT is not
+# part of the required set.
 set -euo pipefail
 
 for name in \
@@ -11,7 +11,6 @@ for name in \
   SSH_HOST \
   SSH_PORT \
   SSH_USER \
-  PORT \
   SSH_PRIVATE_KEY \
   SSH_KNOWN_HOSTS; do
   if [ -z "${!name:-}" ]; then

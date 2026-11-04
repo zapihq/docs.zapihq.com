@@ -6,6 +6,10 @@
 # remote program removes it in its own exit trap; this script is the
 # out-of-band path for a cancelled or failed run. It is best-effort: it warns
 # and exits 0 so cleanup can never replace the deploy's real conclusion.
+#
+# This path intentionally does not log out: the remote program's
+# `trap logout EXIT` owns the registry session, and this path only removes the
+# staged file.
 set -uo pipefail
 
 for name in DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER; do

@@ -4,8 +4,8 @@ Production is a private container image running under docker compose on the
 server, behind the existing host nginx. CI is the only deploy path. This page
 is the runbook for a normal deploy, a rollback, a fresh host, the deploy
 account's privilege, and failure triage. The decision behind it is in
-`docs/adr/0003-docker-ghcr-over-tarball-systemd.md`; the retired cutover and
-teardown procedure is historical and lives in that ADR's appendix.
+`docs/adr/0003-docker-ghcr-over-tarball-systemd.md`, which records the retired
+cutover and teardown as history.
 
 ## What is running
 
@@ -16,6 +16,7 @@ teardown procedure is historical and lives in that ADR's appendix.
 | Compose file    | `/opt/zapi-docs/compose.yml`, CI-owned topology. CI overwrites it on every deploy from `docker/compose.yml`.                                                                                                                                                              |
 | Deploy state    | `/opt/zapi-docs/.image.env`, CI-written on every deploy. It carries the image tag and host port (`IMAGE_TAG`, `PORT`), no secrets.                                                                                                                                       |
 | Runtime environment | `/opt/zapi-docs/.env`, operator-owned, mode 600. CI never writes it; it is the only place the runtime secrets live on the server.                                                                                                                                     |
+| Registry token  | `${DEPLOY_PATH}/.ghcr-token`, transient and owned by the deploy run. The remote trap and the always-run cleanup remove it; it is never written to `.env` or `compose.yml`.                                                                                               |
 | Registry        | Private GHCR package. `sha-<7>` tags are immutable; `latest` is a moving convenience tag and is never the deployed reference. Retention is described under [Normal deploy](#normal-deploy).                                                                              |
 | Deploy account  | `deploy_doc`, home `/home/deploy_doc`, with one narrow sudoers rule for `/usr/bin/docker`; not a member of the `docker` group.                                                                                                                                           |
 | Workflow        | `.github/workflows/deploy.yml`, calling `ci.yml` and `publish.yml` on a normal deploy.                                                                                                                                                                                   |
@@ -49,10 +50,10 @@ The deploy job runs these steps:
 1. **Resolve image tag** — resolves the tag and validates it against Docker's
    tag grammar.
 2. **Validate deploy configuration** — checks `IMAGE_TAG`, `IMAGE_REPOSITORY`,
-   `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `PORT`,
-   `SSH_PRIVATE_KEY`, and `SSH_KNOWN_HOSTS` before any SSH, scp, or registry
-   call. `PORT` is defaulted to 3002 by the workflow, so the operator does not
-   set it unless nginx uses another port.
+   `DEPLOY_PATH`, `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, and
+   `SSH_KNOWN_HOSTS` before any SSH, scp, or registry call. The workflow
+   defaults `PORT` to 3002 before this runs, so it is not required from the
+   operator; set it only when nginx uses another port.
 3. **Prepare SSH credentials** — writes the deploy key and the known-hosts
    file.
 4. **Sync compose file** — copies `docker/compose.yml` to
@@ -71,10 +72,11 @@ The deploy job runs these steps:
 7. **Report the live tag** — writes the **Live tag** notice and the run
    summary.
 
-A cancelled or failed run still runs **Remove staged registry token** last. It
-removes only `${DEPLOY_PATH}/.ghcr-token` over SSH and warns instead of failing
-when the host is unreachable, so it cannot replace the real failure and cannot
-touch `.env`, `compose.yml`, or `.image.env`.
+A cancelled or failed run still attempts **Remove staged registry token** last,
+subject to the job timeout. It removes only `${DEPLOY_PATH}/.ghcr-token` over
+SSH and warns instead of failing when the host is unreachable, so it cannot
+replace the real failure and cannot touch `.env`, `compose.yml`, or
+`.image.env`.
 
 A successful run ends with `Live tag: sha-…` in the log and a **Live tag**
 notice on the run. There is no manual pull or restart step. Re-running the same
@@ -91,6 +93,9 @@ ssh deploy_doc@<host> \
   'sudo -n /usr/bin/docker ps --filter name=zapi-docs --format "{{.Image}}  {{.Status}}"'
 # ghcr.io/zapihq/docs.zapihq.com:sha-…  Up … (healthy)
 ```
+
+These examples use the default host port 3002. Substitute `PORT` if the
+production environment sets a different host port.
 
 ## Rollback
 
@@ -210,7 +215,8 @@ The workflow fails at a named stage. Start there before reading the stack.
 | Deploy green but public `401`   | Expected. The Basic Auth gate is at nginx. The deploy verifies loopback health, not the gated public response.                                                                                                                                                                                                                                                            |
 | Run cancelled or queued         | The `production-deploy` concurrency group never cancels a deploy in progress. Let the running one finish, then re-run or dispatch the tag you want. A failed or cancelled run still attempts to remove the staged token; if that step warns, delete `/opt/zapi-docs/.ghcr-token` by hand.                                                                                  |
 
-Useful read-only commands:
+Useful read-only commands (these also assume the default host port 3002;
+substitute `PORT` if production sets a different host port):
 
 ```bash
 ssh deploy_doc@<host> 'sudo -n /usr/bin/docker inspect --format "{{.Config.Image}} {{.State.Health.Status}}" zapi-docs'

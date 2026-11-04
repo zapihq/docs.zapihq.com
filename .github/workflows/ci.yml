@@ -18,7 +18,7 @@ env:
 
 jobs:
   quality:
-    name: Lint, Typecheck And Container
+    name: Lint, Typecheck, Tests And Container
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -48,7 +48,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Add tests here when a test suite exists
       - name: Lint
         run: pnpm lint
 

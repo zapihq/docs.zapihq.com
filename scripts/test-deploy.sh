@@ -38,7 +38,7 @@ fail_case() {
   printf 'not ok - %s: %s\n' "$1" "$2" >&2
 }
 
-reset() {
+reset_fixture() {
   rm -rf "$STUB_DIR" "$HOME_DIR" "$SERVER_DIR"
   mkdir -p "$STUB_DIR" "$HOME_DIR/.ssh" "$SERVER_DIR"
   : > "$CALL_LOG"
@@ -49,6 +49,7 @@ reset() {
   cat > "$STUB_DIR/ssh" <<EOF
 #!/usr/bin/env bash
 printf 'ssh %s\n' "\$*" >> "$CALL_LOG"
+printf 'remote %s\n' "\${!#}" >> "$CALL_LOG"
 if [ "\${STUB_SSH_FAIL:-0}" != "0" ]; then
   exit "\$STUB_SSH_FAIL"
 fi
@@ -125,8 +126,8 @@ assert_no_remote_calls() {
 
 # --- Validation: every required name is checked before any remote call. -----
 
-for name in IMAGE_TAG IMAGE_REPOSITORY DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER PORT SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
-  reset
+for name in IMAGE_TAG IMAGE_REPOSITORY DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
+  reset_fixture
   if run_validate "$name"; then
     fail_case "missing $name" "expected a non-zero exit"
     continue
@@ -144,7 +145,7 @@ done
 
 # --- Validation: complete configuration passes without touching the host. ---
 
-reset
+reset_fixture
 if ! run_validate ""; then
   fail_case "complete configuration" "expected exit 0: $(tr '\n' ' ' <"$OUTPUT")"
 elif ! grep -Fq 'Deploying ghcr.io/zapihq/docs.zapihq.com:sha-1a2b3c4 to /opt/zapi-docs' "$OUTPUT"; then
@@ -153,6 +154,19 @@ elif ! assert_no_remote_calls "complete configuration"; then
   :
 else
   pass "complete configuration passes without remote calls"
+fi
+
+# PORT is defaulted by the workflow before validation, so an empty PORT must
+# still pass: the default is what supplies it.
+reset_fixture
+if ! run_validate "PORT"; then
+  fail_case "empty PORT" "expected exit 0: $(tr '\n' ' ' <"$OUTPUT")"
+elif ! grep -Fq 'Deploying ghcr.io/zapihq/docs.zapihq.com:sha-1a2b3c4 to /opt/zapi-docs' "$OUTPUT"; then
+  fail_case "empty PORT" "missing success line: $(tr '\n' ' ' <"$OUTPUT")"
+elif ! assert_no_remote_calls "empty PORT"; then
+  :
+else
+  pass "empty PORT passes validation with the workflow default"
 fi
 
 # --- Cleanup: only the staged token is removed, best-effort. ----------------
@@ -198,46 +212,50 @@ run_cleanup() {
   env -i "${filtered[@]}" bash "$CLEANUP" >"$OUTPUT" 2>&1
 }
 
+assert_file_unchanged() {
+  local before="$1"
+  local after="$2"
+  local description="$3"
+  local label="$4"
+
+  if ! cmp -s "$before" "$after"; then
+    fail_case "$label" "${description} changed or was removed"
+    return 1
+  fi
+}
+
 assert_server_files_untouched() {
   local label="$1"
-  if ! cmp -s "$TMP_DIR/env.before" "$SERVER_DIR/.env"; then
-    fail_case "$label" "operator .env changed or was removed"
-    return 1
-  fi
-  if ! cmp -s "$TMP_DIR/compose.before" "$SERVER_DIR/compose.yml"; then
-    fail_case "$label" "compose.yml changed or was removed"
-    return 1
-  fi
-  if ! cmp -s "$TMP_DIR/image-env.before" "$SERVER_DIR/.image.env"; then
-    fail_case "$label" ".image.env changed or was removed"
-    return 1
-  fi
-  if ! cmp -s "$TMP_DIR/keep.before" "$SERVER_DIR/keep.txt"; then
-    fail_case "$label" "keep.txt changed or was removed"
-    return 1
-  fi
-  if ! cmp -s "$TMP_DIR/token-bak.before" "$SERVER_DIR/.ghcr-token.bak"; then
-    fail_case "$label" ".ghcr-token.bak changed or was removed"
+  local check_key="${2:-yes}"
+
+  assert_file_unchanged "$TMP_DIR/env.before" "$SERVER_DIR/.env" "operator .env" "$label" || return 1
+  assert_file_unchanged "$TMP_DIR/compose.before" "$SERVER_DIR/compose.yml" "compose.yml" "$label" || return 1
+  assert_file_unchanged "$TMP_DIR/image-env.before" "$SERVER_DIR/.image.env" ".image.env" "$label" || return 1
+  assert_file_unchanged "$TMP_DIR/keep.before" "$SERVER_DIR/keep.txt" "keep.txt" "$label" || return 1
+  assert_file_unchanged "$TMP_DIR/token-bak.before" "$SERVER_DIR/.ghcr-token.bak" ".ghcr-token.bak" "$label" || return 1
+
+  if [ "$check_key" = "yes" ] && [ ! -f "$HOME_DIR/.ssh/id_ed25519" ]; then
+    fail_case "$label" "deploy key was removed"
     return 1
   fi
 }
 
 assert_only_token_targeted() {
   local label="$1"
-  if ! grep -Fq 'rm -f --' "$CALL_LOG"; then
-    fail_case "$label" "no token removal was attempted: $(tr '\n' ' ' <"$CALL_LOG")"
+  local expected="remote rm -f -- $SERVER_DIR/.ghcr-token"
+  local remote_lines
+
+  remote_lines="$(grep -c '^remote ' "$CALL_LOG" || true)"
+  if [ "$remote_lines" != "1" ]; then
+    fail_case "$label" "expected exactly one remote command, found ${remote_lines}: $(tr '\n' ' ' <"$CALL_LOG")"
     return 1
   fi
-  if ! grep -Fq '.ghcr-token' "$CALL_LOG"; then
-    fail_case "$label" "the remote command did not name the staged token"
+  if ! grep -Fxq "$expected" "$CALL_LOG"; then
+    fail_case "$label" "remote command was not '${expected}': $(tr '\n' ' ' <"$CALL_LOG")"
     return 1
   fi
   if grep -Eq '^(scp|docker|curl) ' "$CALL_LOG"; then
     fail_case "$label" "cleanup called a command other than ssh"
-    return 1
-  fi
-  if grep -Eq 'rm -f -- .*\.env|rm -f -- .*compose\.yml' "$CALL_LOG"; then
-    fail_case "$label" "cleanup targeted a file other than the staged token"
     return 1
   fi
 }
@@ -247,7 +265,7 @@ cleanup_case() {
   local token_expected="$2"
   local warning_expected="$3"
 
-  reset
+  reset_fixture
   prepare_server
 
   if ! run_cleanup ""; then
@@ -279,7 +297,7 @@ cleanup_case() {
 
 cleanup_case "cleanup removes the staged token on success" "gone" "no"
 
-reset
+reset_fixture
 prepare_server
 rm -f "$SERVER_DIR/.ghcr-token"
 if ! run_cleanup ""; then
@@ -298,7 +316,7 @@ for failure in "1:remote failure" "255:SSH unreachable"; do
   code="${failure%%:*}"
   label="cleanup after ${failure#*:}"
 
-  reset
+  reset_fixture
   prepare_server
   STUB_SSH_FAIL="$code"
 
@@ -321,7 +339,7 @@ for failure in "1:remote failure" "255:SSH unreachable"; do
 done
 STUB_SSH_FAIL=0
 
-reset
+reset_fixture
 prepare_server
 rm -f "$HOME_DIR/.ssh/id_ed25519"
 
@@ -329,7 +347,9 @@ if ! run_cleanup ""; then
   fail_case "cleanup without a prepared key" "cleanup exited non-zero: $(tr '\n' ' ' <"$OUTPUT")"
 elif [ ! -e "$SERVER_DIR/.ghcr-token" ]; then
   fail_case "cleanup without a prepared key" "token was removed without a key"
-elif ! assert_server_files_untouched "cleanup without a prepared key"; then
+elif [ -e "$HOME_DIR/.ssh/id_ed25519" ]; then
+  fail_case "cleanup without a prepared key" "deploy key unexpectedly exists"
+elif ! assert_server_files_untouched "cleanup without a prepared key" "no"; then
   :
 elif [ -s "$CALL_LOG" ]; then
   fail_case "cleanup without a prepared key" "SSH was attempted: $(tr '\n' ' ' <"$CALL_LOG")"
@@ -342,7 +362,7 @@ fi
 for name in DEPLOY_PATH SSH_HOST SSH_PORT SSH_USER; do
   label="cleanup with missing $name"
 
-  reset
+  reset_fixture
   prepare_server
 
   if ! run_cleanup "$name"; then

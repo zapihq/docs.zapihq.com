@@ -37,7 +37,7 @@ the previously running tag and says whether that restore succeeded.
 
 ## The server contract
 
-The server has three files, all in `${DEPLOY_PATH}` (default
+The server has three persistent files, all in `${DEPLOY_PATH}` (default
 `/opt/zapi-docs`), named by owner:
 
 | File          | Owner    | Contents                                                      |
@@ -45,6 +45,11 @@ The server has three files, all in `${DEPLOY_PATH}` (default
 | `compose.yml` | CI       | Topology, re-synced from `docker/compose.yml` on every deploy. |
 | `.image.env`  | CI       | Deploy state: image tag and host port, no secrets.             |
 | `.env`        | Operator | Runtime environment, mode 600, never written by CI.            |
+
+The staged registry token is a fourth, transient file at
+`${DEPLOY_PATH}/.ghcr-token`, owned by the deploy run. The remote trap and the
+always-run cleanup remove it, and it is never written to `.env` or
+`compose.yml`.
 
 Deploy state is separate for two reasons. CI must not write the runtime
 environment: the secrets are hand-managed on the host, and a deploy has no
@@ -64,7 +69,7 @@ behaviour, not a deploy signal. A rollback is verified the same way.
 `docs/agents/deploy.md` describes only the current container path: normal
 deploy, rollback, fresh host, the deploy account's privilege, and failure
 triage. The retired cutover and teardown procedure is historical, not a
-runbook step; it lives in the appendix below, and the runbook carries one
+runbook step; it is recorded below as history, and the runbook carries one
 pointer to it.
 
 ## Publishing and `latest`
@@ -139,111 +144,11 @@ other docker command to the account.
 
 ## Appendix: retired cutover and teardown (historical)
 
-This procedure is kept for the record. It was completed when the container
-path replaced the tarball/systemd path and is not part of the current runbook.
-Do not replay it on a host that already runs the container.
-
-### Cutover
-
-The initial cutover was the only step with a real outage, because systemd
-already owned port 3002. It ran after the image was published and the host had
-Docker with the compose plugin, the `deploy_doc` account and key, the sudoers
-rule, `/opt/zapi-docs` writable, and `/opt/zapi-docs/.env` mode 600.
-
-1. Confirm the image tag is published and `/opt/zapi-docs` exists and is
-   writable by `deploy_doc`. Place `compose.yml` there.
-2. Create `/opt/zapi-docs/.env` with the runtime secrets, owned so compose can
-   read it and mode 600. If the old shared environment file exists at
-   `/var/www/zapi-docs/shared/.env.production`, copy its keys; do not assume the
-   new `.env` already has every key. Write `.image.env` with the published tag
-   and `PORT=3002`.
-3. Make sure the deploy account's sudoers rule is installed, then test it as
-   `deploy_doc` with `sudo -n /usr/bin/docker version`.
-4. Log in to `ghcr.io` with a short-lived credential and pull the image before
-   stopping the old service, so the outage covers only the swap:
-
-   ```bash
-   cd /opt/zapi-docs
-   sudo docker compose --env-file .image.env pull
-   ```
-
-   A pull does not bind the port.
-
-5. Stop and disable the unit: `sudo systemctl stop zapi-docs` and
-   `sudo systemctl disable zapi-docs`. Port 3002 is now free. From here until
-   the container is healthy, nginx returns `502`; that is expected during the
-   swap.
-6. Start the container from `/opt/zapi-docs`:
-
-   ```bash
-   sudo docker compose --env-file .image.env up --detach --wait
-   ```
-
-   Leave the old `/var/www/zapi-docs` tree in place for teardown.
-7. Verify the loopback health body, the running image tag, and the external
-   `401` with the Basic Auth challenge.
-
-If the container did not become healthy, stop it first so it releases port
-3002, then bring the old service back:
-
-```bash
-sudo docker compose --env-file .image.env down
-sudo systemctl start zapi-docs
-```
-
-### Teardown
-
-Teardown was the one-way removal of the retired path, and it ran only after a
-container deploy and a rollback had both been proven on the box. It ran as a
-root-capable operator, not as `deploy_doc`, because the deploy account's narrow
-rule allows only `/usr/bin/docker`.
-
-1. Confirm the container is healthy and a rollback dispatch has succeeded.
-2. Before deleting the old environment file, compare key names, not values:
-
-   ```bash
-   sudo sed -E 's/=.*/=<redacted>/' /var/www/zapi-docs/shared/.env.production
-   sudo sed -E 's/=.*/=<redacted>/' /opt/zapi-docs/.env
-   ```
-
-   Copy any key still needed into `/opt/zapi-docs/.env`, keep it mode 600, and
-   re-run a deploy.
-
-3. Confirm the old path is not serving:
-
-   ```bash
-   systemctl is-active zapi-docs    # inactive
-   systemctl is-enabled zapi-docs   # disabled
-   ss -lntp | grep ':3002'          # docker-proxy, not a node process
-   ```
-
-4. Remove the unit. `systemctl cat zapi-docs` shows the actual unit file;
-   remove that file, not a guessed path:
-
-   ```bash
-   sudo systemctl stop zapi-docs
-   sudo systemctl disable zapi-docs
-   sudo rm /etc/systemd/system/zapi-docs.service
-   sudo systemctl daemon-reload
-   sudo systemctl reset-failed zapi-docs
-   ```
-
-5. Remove the old release tree. Check the exact path first, then delete only
-   that directory. Do not remove `/var/www` itself:
-
-   ```bash
-   sudo ls -la /var/www/zapi-docs
-   readlink -f /var/www/zapi-docs/current
-   sudo rm -rf /var/www/zapi-docs
-   ```
-
-6. Remove GitHub configuration that belonged to the retired path, from the
-   `production` environment: variables `SERVICE_NAME`, `KEEP_RELEASES`, and
-   `OPENROUTER_API_KEY`; secret `RUNTIME_ENV_FILE`. Keep `DEPLOY_PATH`,
-   `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, and
-   `SSH_KNOWN_HOSTS`; keep `NEXT_PUBLIC_SITE_URL`. `PORT` is optional and
-   defaults to 3002.
-
-7. Prove nothing needed the deleted state: dispatch a deploy for the live tag
-   and confirm the live tag, loopback health, the public `401`, and
-   `sudo nginx -t`.
+The cutover was a one-off with a real outage: systemd already owned port
+3002, so the unit was stopped and disabled before compose took the port.
+Teardown removed the unit and `/var/www/zapi-docs` only after a container
+deploy and a rollback had both been proven, and the retired GitHub
+configuration was removed. The old environment file was checked for any keys
+still needed before it was deleted. These instructions are deliberately not
+carried forward and are not replayed on a host that already runs the
+container.
