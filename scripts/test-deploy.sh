@@ -16,6 +16,8 @@ BUNDLE="$ROOT/scripts/deploy/bundle.sh"
 
 # The probe contract shared by the container seam and the deploy job.
 source "$ROOT/scripts/lib/health.sh"
+# The registry-error vocabulary shared by the deploy and the publish check.
+source "$ROOT/scripts/lib/registry-error.sh"
 
 TMP_DIR="$(mktemp -d)"
 STUB_DIR="$TMP_DIR/bin"
@@ -529,6 +531,30 @@ elif [ "$(grep -c '^curl ' "$CALL_LOG")" != "3" ]; then
 else
   pass "health: a mismatching body retries and reports the last body"
 fi
+
+# --- Registry errors: one shared vocabulary for the deploy and publish. -----
+
+classify_case() {
+  local label="$1"
+  local text="$2"
+  local expected="$3"
+  local actual
+
+  actual="$(classify_registry_error "$text")"
+  if [ "$actual" != "$expected" ]; then
+    fail_case "registry error: $label" "classified '${text}' as '${actual}', expected '${expected}'"
+  else
+    pass "registry error: $label is $expected"
+  fi
+}
+
+classify_case "denied" "Error response from daemon: denied" "auth"
+classify_case "unauthorized" "unauthorized: authentication required" "auth"
+classify_case "forbidden" "forbidden" "auth"
+classify_case "manifest unknown" "manifest unknown" "missing"
+classify_case "not found" "repository not found" "missing"
+classify_case "no such" "no such manifest" "missing"
+classify_case "unrelated" "network timeout" "other"
 
 # --- Deploy program: bundle.sh streams the remote program, stubs stand in ---
 # for the host. Everything here drives the committed scripts as the workflow
