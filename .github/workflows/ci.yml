@@ -90,10 +90,10 @@ jobs:
 
       - name: Lint shell scripts
         run: |
-          docker run --rm --entrypoint sh \
-            -v "$PWD:/mnt" -w /mnt \
+          mapfile -t files < <(find scripts -name "*.sh")
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
             koalaman/shellcheck:stable \
-            -c 'find scripts -name "*.sh" -exec shellcheck -x -P scripts {} +'
+            -x -P scripts "${files[@]}"
 
       - name: Lint workflows
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
