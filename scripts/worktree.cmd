@@ -134,7 +134,11 @@ if defined FORCE (
   git -C "%REPOROOT%" worktree remove "!RESOLVED!"
 )
 if errorlevel 1 (
-  echo git worktree remove failed for !RESOLVED!
+  echo git worktree remove failed; removing the directory directly.
+  call :delete_dir "!RESOLVED!"
+)
+if exist "!RESOLVED!" (
+  echo Could not remove !RESOLVED!
   exit /b 1
 )
 git -C "%REPOROOT%" worktree prune
