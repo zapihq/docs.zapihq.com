@@ -7,6 +7,13 @@
 * text=auto
 
 .gitattributes text eol=lf
+.lintstagedrc text eol=lf
+.prettierrc text eol=lf
+.prettierignore text eol=lf
+.dockerignore text eol=lf
+.gitignore text eol=lf
+.env.example text eol=lf
+Dockerfile text eol=lf
 *.sh text eol=lf
 *.bash text eol=lf
 *.mjs text eol=lf

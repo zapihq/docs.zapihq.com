@@ -19,7 +19,7 @@ async function getOctokit(): Promise<Octokit> {
 
   if (!appId || !privateKey) {
     throw new Error(
-      "No GitHub keys provided for Github app, docs feedback feature will not work.",
+      "No GitHub keys provided for Github app, docs feedback feature will not work."
     );
   }
 
@@ -36,7 +36,7 @@ async function getOctokit(): Promise<Octokit> {
       headers: {
         "X-GitHub-Api-Version": "2022-11-28",
       },
-    },
+    }
   );
 
   instance = await app.getInstallationOctokit(data.id);
@@ -77,24 +77,24 @@ async function getFeedbackDestination() {
 }
 
 export async function onPageFeedbackAction(
-  feedback: PageFeedback,
+  feedback: PageFeedback
 ): Promise<ActionResponse> {
   "use server";
   feedback = pageFeedback.parse(feedback);
   return createDiscussionThread(
     feedback.url,
-    `[${feedback.opinion}] ${feedback.message}\n\n> Forwarded from user feedback.`,
+    `[${feedback.opinion}] ${feedback.message}\n\n> Forwarded from user feedback.`
   );
 }
 
 export async function onBlockFeedbackAction(
-  feedback: BlockFeedback,
+  feedback: BlockFeedback
 ): Promise<ActionResponse> {
   "use server";
   feedback = blockFeedback.parse(feedback);
   return createDiscussionThread(
     feedback.url,
-    `> ${feedback.blockBody ?? feedback.blockId}\n\n${feedback.message}\n\n> Forwarded from user feedback.`,
+    `> ${feedback.blockBody ?? feedback.blockId}\n\n${feedback.message}\n\n> Forwarded from user feedback.`
   );
 }
 
@@ -102,12 +102,12 @@ async function createDiscussionThread(pageId: string, body: string) {
   const octokit = await getOctokit();
   const destination = await getFeedbackDestination();
   const category = destination.discussionCategories.nodes.find(
-    (category) => category.name === DocsCategory,
+    (category) => category.name === DocsCategory
   );
 
   if (!category)
     throw new Error(
-      `Please create a "${DocsCategory}" category in GitHub Discussion`,
+      `Please create a "${DocsCategory}" category in GitHub Discussion`
     );
 
   const title = `Feedback for ${pageId}`;

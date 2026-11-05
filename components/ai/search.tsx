@@ -58,7 +58,7 @@ export function AISearchPanelHeader({
     <div
       className={cn(
         "sticky top-0 flex items-start gap-2 border rounded-xl bg-fd-secondary text-fd-secondary-foreground shadow-sm",
-        className,
+        className
       )}
       {...props}
     >
@@ -77,7 +77,7 @@ export function AISearchPanelHeader({
             size: "icon-sm",
             color: "ghost",
             className: "text-fd-muted-foreground rounded-full",
-          }),
+          })
         )}
         onClick={() => setOpen(false)}
       >
@@ -103,7 +103,7 @@ export function AISearchInputActions() {
               color: "secondary",
               size: "sm",
               className: "rounded-full gap-1.5",
-            }),
+            })
           )}
           onClick={() => regenerate()}
         >
@@ -118,7 +118,7 @@ export function AISearchInputActions() {
             color: "secondary",
             size: "sm",
             className: "rounded-full",
-          }),
+          })
         )}
         onClick={() => setMessages([])}
       >
@@ -132,7 +132,7 @@ const StorageKeyInput = "__ai_search_input";
 export function AISearchInput(props: ComponentProps<"form">) {
   const { status, sendMessage, stop } = useChatContext();
   const [input, setInput] = useState(
-    () => localStorage.getItem(StorageKeyInput) ?? "",
+    () => localStorage.getItem(StorageKeyInput) ?? ""
   );
   const isLoading = status === "streaming" || status === "submitted";
   const onStart = (e?: SyntheticEvent) => {
@@ -193,7 +193,7 @@ export function AISearchInput(props: ComponentProps<"form">) {
             buttonVariants({
               color: "secondary",
               className: "transition-all rounded-full mt-2 gap-2",
-            }),
+            })
           )}
           onClick={stop}
         >
@@ -208,7 +208,7 @@ export function AISearchInput(props: ComponentProps<"form">) {
             buttonVariants({
               color: "primary",
               className: "transition-all rounded-full mt-2",
-            }),
+            })
           )}
           disabled={input.length === 0}
         >
@@ -254,7 +254,7 @@ function List(props: Omit<ComponentProps<"div">, "dir">) {
       {...props}
       className={cn(
         "fd-scroll-container overflow-y-auto min-w-0 flex flex-col",
-        props.className,
+        props.className
       )}
     >
       {props.children}
@@ -273,7 +273,7 @@ function Input(props: ComponentProps<"textarea">) {
         {...props}
         className={cn(
           "resize-none bg-transparent placeholder:text-fd-muted-foreground focus-visible:outline-none",
-          shared,
+          shared
         )}
       />
       <div ref={ref} className={cn(shared, "break-all invisible")}>
@@ -315,7 +315,7 @@ function Message({
       <p
         className={cn(
           "mb-1 text-sm font-medium text-fd-muted-foreground",
-          message.role === "assistant" && "text-fd-primary",
+          message.role === "assistant" && "text-fd-primary"
         )}
       >
         {roleName[message.role] ?? "unknown"}
@@ -380,7 +380,7 @@ export function AISearchTrigger({
           "fixed bottom-4 gap-3 w-24 inset-e-[calc(--spacing(4)+var(--removed-body-scroll-bar-size,0px))] shadow-lg z-20 transition-[translate,opacity]",
           open && "translate-y-10 opacity-0",
         ],
-        className,
+        className
       )}
       onClick={() => setOpen(!open)}
       {...props}
@@ -419,7 +419,7 @@ export function AISearchPanel() {
         <div
           className={cn(
             "fixed inset-0 z-30 backdrop-blur-xs bg-fd-overlay lg:hidden",
-            open ? "animate-fd-fade-in" : "animate-fd-fade-out",
+            open ? "animate-fd-fade-in" : "animate-fd-fade-out"
           )}
           onClick={() => setOpen(false)}
         />
@@ -432,7 +432,7 @@ export function AISearchPanel() {
             "lg:sticky lg:top-0 lg:h-dvh lg:border-s lg:ms-auto lg:in-[#nd-docs-layout]:[grid-area:toc] lg:in-[#nd-notebook-layout]:row-span-full lg:in-[#nd-notebook-layout]:col-start-5",
             open
               ? "animate-fd-dialog-in lg:animate-[ask-ai-open_200ms]"
-              : "animate-fd-dialog-out lg:animate-[ask-ai-close_200ms]",
+              : "animate-fd-dialog-out lg:animate-[ask-ai-close_200ms]"
           )}
         >
           <div className="flex flex-col size-full p-2 lg:p-3 lg:w-(--ai-chat-width)">
