@@ -592,6 +592,8 @@ run_remote() {
     assignments+=("STUB_HEALTH_BODY=$STUB_HEALTH_BODY")
   fi
 
+  # $BUNDLE is expanded by the inner bash, not by this shell.
+  # shellcheck disable=SC2016
   env -i "${assignments[@]}" "BUNDLE=$BUNDLE" \
     bash -c 'bash "$BUNDLE" | bash -s' >"$OUTPUT" 2>&1
 }

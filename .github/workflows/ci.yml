@@ -93,7 +93,7 @@ jobs:
           docker run --rm --entrypoint sh \
             -v "$PWD:/mnt" -w /mnt \
             koalaman/shellcheck:stable \
-            -c 'find scripts -name "*.sh" -exec shellcheck {} +'
+            -c 'find scripts -name "*.sh" -exec shellcheck -x -P scripts {} +'
 
       - name: Lint workflows
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
