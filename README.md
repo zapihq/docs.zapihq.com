@@ -43,6 +43,24 @@ registry, or container. Run the same container checks against a local image:
 bash scripts/check-container.sh zapi-docs
 ```
 
+## Local checks
+
+Run the same checks CI runs before opening a PR:
+
+```bash
+pnpm install --frozen-lockfile   # once per worktree; never symlink node_modules
+pnpm lint
+pnpm types:check
+pnpm format:check
+bash scripts/test-deploy.sh      # Git Bash on Windows
+```
+
+`pnpm check` runs lint, typecheck, and the format check together. CI also runs
+`actionlint` and `shellcheck` over the workflows and deploy scripts. A fresh
+worktree has no `node_modules`, so run the install there; do not junction the
+primary checkout's `node_modules`, because pnpm will try to replace it. If
+PowerShell blocks `pnpm.ps1`, use `pnpm.cmd`.
+
 ## Explore
 
 In the project, you can see:

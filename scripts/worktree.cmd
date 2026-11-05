@@ -99,6 +99,25 @@ if /I not "!INCHECK!"=="%CD%" (
   exit /b 1
 )
 
+rem `gh pr merge --delete-branch` can remove the worktree registration while
+rem leaving the directory behind (for example, when node_modules makes it
+rem non-empty). Detect that case and delete the leftover directory directly.
+set "REGISTERED="
+for /f "usebackq tokens=1,* delims= " %%a in (`git -C "%REPOROOT%" worktree list --porcelain`) do (
+  if /I "%%a"=="worktree" for %%p in ("%%b") do if /I "%%~fp"=="!RESOLVED!" set "REGISTERED=1"
+)
+if not defined REGISTERED (
+  echo Worktree registration is gone; removing the leftover directory.
+  call :delete_dir "!RESOLVED!"
+  if exist "!RESOLVED!" (
+    echo Could not remove !RESOLVED!
+    exit /b 1
+  )
+  git -C "%REPOROOT%" worktree prune >nul 2>&1
+  echo Removed: !RESOLVED!
+  exit /b 0
+)
+
 set "DIRTY="
 for /f "usebackq delims=" %%i in (`git -C "!RESOLVED!" status --porcelain`) do set "DIRTY=1"
 if defined DIRTY if not defined FORCE (
@@ -126,6 +145,19 @@ if errorlevel 1 (
 
 echo Removed: !RESOLVED!
 if defined BRANCH if /I not "!BRANCH!"=="HEAD" echo Branch '!BRANCH!' still exists. Delete it with: git branch -D !BRANCH!
+exit /b 0
+
+:delete_dir
+rem Delete a directory tree even when it contains paths longer than MAX_PATH.
+rem robocopy can mirror an empty directory over the tree; rmdir then removes
+rem the empty shell. rmdir alone fails partway through .pnpm paths.
+set "EMPTY=%TEMP%"
+if not defined EMPTY set "EMPTY=%USERPROFILE%\AppData\Local\Temp"
+set "EMPTY=%EMPTY%\zapi-worktree-empty-%RANDOM%%RANDOM%"
+mkdir "!EMPTY!" >nul 2>&1
+robocopy "!EMPTY!" "%~1" /MIR /NFL /NDL /NJH /NJS /NP >nul 2>&1
+rmdir /s /q "%~1" >nul 2>&1
+rmdir "!EMPTY!" >nul 2>&1
 exit /b 0
 
 :resolve_root

@@ -1,0 +1,35 @@
+# Normalize line endings so every checkout matches the LF blobs in the index.
+#
+# Windows checkouts used to be CRLF, which made `bash scripts/test-deploy.sh`
+# fail on its own shebang and made `prettier --check` disagree with the
+# committed files. Keep shell, source, docs, and config at LF; only Windows
+# batch files stay CRLF.
+* text=auto
+
+.gitattributes text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.mdx text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.txt text eol=lf
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
