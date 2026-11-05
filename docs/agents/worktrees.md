@@ -26,6 +26,8 @@ scripts\worktree.cmd new feat/nav-cleanup
 
 It creates `.worktrees/feat-nav-cleanup` on a new branch cut from `origin/main`, refuses if the directory or branch already exists, and prints the path. Work there from then on — every commit for this branch happens in that folder.
 
+A new worktree has no `node_modules`. Run `pnpm install --frozen-lockfile` there once; never junction or symlink the primary checkout's `node_modules`, because pnpm treats it as stale and tries to replace it.
+
 If the script is missing or broken, the same thing by hand:
 
 ```

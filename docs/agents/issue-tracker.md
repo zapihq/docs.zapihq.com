@@ -14,6 +14,23 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Sync an issue's task list
+
+Tick only the tasks a change completed; leave the rest unchecked. Use the
+script, which reads and writes the body as UTF-8 through `gh api` and
+`gh issue edit --body-file`:
+
+```bash
+node scripts/issue-tasks.mjs 51 --list
+node scripts/issue-tasks.mjs 51 --task 2 --task 5
+```
+
+Never capture an issue body in a PowerShell variable or round-trip it through
+`Set-Content`. PowerShell decodes `gh`'s UTF-8 output with the legacy codepage
+(an em dash becomes `ΓÇö`) and its array handling collapses Markdown newlines.
+Write the body with Node (or another UTF-8-safe tool) and pass it with
+`--body-file`.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

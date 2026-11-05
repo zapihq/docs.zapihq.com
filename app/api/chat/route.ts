@@ -32,7 +32,7 @@ async function createSearchServer() {
         url: page.url,
         content: await page.data.getText("processed"),
       } as CustomDocument;
-    }),
+    })
   );
 
   for (const doc of docs) {
@@ -68,7 +68,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
 
   const result = streamText({
     model: openrouter.chat(
-      process.env.OPENROUTER_MODEL ?? "anthropic/claude-3.5-sonnet",
+      process.env.OPENROUTER_MODEL ?? "anthropic/claude-3.5-sonnet"
     ),
     stopWhen: stepCountIs(5),
     tools: {
